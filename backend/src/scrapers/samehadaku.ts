@@ -5,6 +5,13 @@ import redis from '../config/redis';
 const BASE_URL = 'https://samehadaku.li';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
+// In-memory cache as fallback when Redis is not available
+const memoryCache = new Map<string, { data: string; expiry: number }>();
+
+// Rate limit tracking
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL = 1000; // Minimum 1 second between requests
+
 // Axios instance with headers to avoid blocking
 const axiosInstance = axios.create({
   headers: {
@@ -15,6 +22,25 @@ const axiosInstance = axios.create({
   },
   timeout: 15000,
 });
+
+// Delay helper to avoid rate limiting
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Throttled request to avoid 429 errors
+async function throttledRequest(url: string): Promise<string> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    await delay(MIN_REQUEST_INTERVAL - timeSinceLastRequest);
+  }
+  
+  lastRequestTime = Date.now();
+  const { data } = await axiosInstance.get(url);
+  return data;
+}
 
 export interface AnimeItem {
   id: string;
@@ -64,18 +90,46 @@ export interface StreamServer {
   quality?: string;
 }
 
-// Helper to get cached data
+// Helper to get cached data (Redis with in-memory fallback)
 async function getCached<T>(key: string): Promise<T | null> {
-  const cached = await redis.get(key);
-  if (cached) {
-    return JSON.parse(cached) as T;
+  // Try Redis first
+  const redisCache = await redis.get(key);
+  if (redisCache) {
+    return JSON.parse(redisCache) as T;
   }
+  
+  // Try in-memory cache
+  const memCache = memoryCache.get(key);
+  if (memCache && memCache.expiry > Date.now()) {
+    return JSON.parse(memCache.data) as T;
+  }
+  
+  // Clean expired memory cache
+  if (memCache) {
+    memoryCache.delete(key);
+  }
+  
   return null;
 }
 
-// Helper to set cache
+// Helper to set cache (both Redis and in-memory)
 async function setCache(key: string, data: unknown): Promise<void> {
-  await redis.set(key, JSON.stringify(data), CACHE_TTL);
+  const jsonData = JSON.stringify(data);
+  
+  // Set Redis cache
+  await redis.set(key, jsonData, CACHE_TTL);
+  
+  // Also set in-memory cache as fallback
+  memoryCache.set(key, {
+    data: jsonData,
+    expiry: Date.now() + (CACHE_TTL * 1000),
+  });
+  
+  // Clean old memory cache entries (keep max 100)
+  if (memoryCache.size > 100) {
+    const keysToDelete = Array.from(memoryCache.keys()).slice(0, 20);
+    keysToDelete.forEach(k => memoryCache.delete(k));
+  }
 }
 
 // Helper to extract anime slug from episode URL
@@ -102,7 +156,7 @@ export async function getLatestAnime(page: number = 1): Promise<{ data: AnimeIte
   try {
     // Use homepage with pagination for latest updates
     const url = page === 1 ? BASE_URL : `${BASE_URL}/page/${page}/`;
-    const { data: html } = await axiosInstance.get(url);
+    const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     const animeList: AnimeItem[] = [];
@@ -253,7 +307,7 @@ export async function searchAnime(query: string, page: number = 1): Promise<{ da
 
   try {
     const url = `${BASE_URL}/page/${page}/?s=${encodeURIComponent(query)}`;
-    const { data: html } = await axiosInstance.get(url);
+    const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     const animeList: AnimeItem[] = [];

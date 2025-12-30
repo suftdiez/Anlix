@@ -8,13 +8,30 @@ const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 class RedisClient {
   private client: Redis | null = null;
   private isConnected: boolean = false;
+  private connectionAttempted: boolean = false;
 
   async connect(): Promise<Redis | null> {
+    if (this.connectionAttempted) {
+      return this.client;
+    }
+    
+    this.connectionAttempted = true;
+    
     try {
       this.client = new Redis(REDIS_URL, {
-        maxRetriesPerRequest: 3,
-        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 1,
+        retryStrategy: () => null, // Don't retry on failure
         lazyConnect: true,
+        connectTimeout: 3000,
+        enableOfflineQueue: false,
+      });
+
+      // Add error handler to prevent unhandled errors
+      this.client.on('error', (err) => {
+        if (this.isConnected) {
+          console.warn('Redis connection lost:', err.message);
+          this.isConnected = false;
+        }
       });
 
       await this.client.connect();
@@ -22,8 +39,9 @@ class RedisClient {
       console.log('✅ Redis connected successfully');
       return this.client;
     } catch (error) {
-      console.warn('⚠️ Redis connection failed, running without cache:', error);
+      console.warn('⚠️ Redis not available, running without cache');
       this.isConnected = false;
+      this.client = null;
       return null;
     }
   }
@@ -53,8 +71,8 @@ class RedisClient {
       } else {
         await this.client!.set(key, value);
       }
-    } catch (error) {
-      console.error('Redis set error:', error);
+    } catch {
+      // Silently fail on cache set errors
     }
   }
 
@@ -62,8 +80,8 @@ class RedisClient {
     if (!this.isReady()) return;
     try {
       await this.client!.del(key);
-    } catch (error) {
-      console.error('Redis del error:', error);
+    } catch {
+      // Silently fail
     }
   }
 }
