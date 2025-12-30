@@ -15,23 +15,24 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Track database connection status
+let dbConnected = false;
+
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS configuration
+// CORS configuration - allow all origins for now
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://anlix.vercel.app', 'https://anlix.netlify.app']
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: true, // Allow all origins
   credentials: true,
 }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 200, // Limit each IP to 200 requests per windowMs
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -47,12 +48,21 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev'));
 }
 
-// Health check
+// Health check - IMPORTANT: Railway checks /api/health
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    database: dbConnected ? 'connected' : 'disconnected',
+    redis: redis.isReady() ? 'connected' : 'disconnected',
+  });
+});
+
+// Legacy health check
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    redis: redis.isReady() ? 'connected' : 'disconnected',
   });
 });
 
@@ -69,7 +79,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     description: 'Anime & Donghua Streaming API',
     endpoints: {
-      health: '/health',
+      health: '/api/health',
       auth: '/api/auth',
       anime: '/api/anime',
       donghua: '/api/donghua',
@@ -96,24 +106,32 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 // Start server
 const startServer = async () => {
   try {
-    // Connect to MongoDB
-    await connectDatabase();
-    
-    // Connect to Redis (optional, app works without it)
-    await redis.connect();
-
+    // Start server first (so healthcheck can respond)
     app.listen(PORT, () => {
       console.log(`
 ╔══════════════════════════════════════════════════╗
 ║                                                  ║
 ║     🎬 ANLIX API Server                          ║
 ║                                                  ║
-║     Running on: http://localhost:${PORT}            ║
+║     Running on port: ${PORT}                         ║
 ║     Environment: ${process.env.NODE_ENV || 'development'}                   ║
 ║                                                  ║
 ╚══════════════════════════════════════════════════╝
       `);
     });
+
+    // Connect to MongoDB (non-blocking)
+    try {
+      await connectDatabase();
+      dbConnected = true;
+      console.log('✅ MongoDB connected');
+    } catch (dbError) {
+      console.warn('⚠️ MongoDB connection failed, auth features disabled:', dbError);
+    }
+    
+    // Connect to Redis (optional)
+    await redis.connect();
+
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
