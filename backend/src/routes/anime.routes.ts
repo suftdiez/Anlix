@@ -146,4 +146,35 @@ router.get('/episode/:slug', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/anime/stream
+ * Get video stream URL from AJAX-based server
+ */
+router.post('/stream', async (req: Request, res: Response) => {
+  try {
+    const { post, nume, type } = req.body;
+    
+    if (!post || !nume) {
+      res.status(400).json({ success: false, error: 'Missing post or nume parameter' });
+      return;
+    }
+
+    const streamUrl = await samehadaku.getServerStream(post, nume, type || 'video');
+    
+    if (!streamUrl) {
+      res.status(404).json({ success: false, error: 'Stream not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: { url: streamUrl },
+    });
+  } catch (error) {
+    console.error('Error fetching stream:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch stream' });
+  }
+});
+
 export default router;
+

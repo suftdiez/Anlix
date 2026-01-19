@@ -82,12 +82,17 @@ export interface EpisodeDetail {
   servers: StreamServer[];
   prevEpisode?: string;
   nextEpisode?: string;
+  postId?: string; // For AJAX server fetching
 }
 
 export interface StreamServer {
   name: string;
   url: string;
   quality?: string;
+  // For AJAX-based server switching (Samehadaku)
+  post?: string;
+  nume?: string;
+  type?: string;
 }
 
 // Helper to get cached data (Redis with in-memory fallback)
@@ -465,25 +470,65 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
     const episodeNumber = title.match(/Episode\s*(\d+)/i)?.[1] || '';
 
     const servers: StreamServer[] = [];
+    let postId = '';
     
-    // Find video iframes
+    // Find video iframes (default player)
     $('iframe').each((_, el) => {
       const src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && !src.includes('facebook') && !src.includes('twitter')) {
+      if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
         servers.push({
-          name: 'Player',
+          name: 'Default Player',
           url: src,
           quality: 'HD',
         });
       }
     });
 
-    // Find server options
-    $('.player-embed .mirror-items a, .pemain a, .server-list a, select option').each((_, el) => {
-      const dataUrl = $(el).attr('data-url') || $(el).attr('data-video') || $(el).attr('value') || '';
-      const serverName = $(el).text().trim();
+    // Find AJAX-based server options (#server ul li div)
+    // These require AJAX POST to admin-ajax.php to get the actual video URL
+    $('#server ul li div, .server ul li div').each((_, el) => {
+      const $el = $(el);
+      const post = $el.attr('data-post') || '';
+      const nume = $el.attr('data-nume') || '';
+      const type = $el.attr('data-type') || '';
+      const serverName = $el.text().trim();
       
-      if (dataUrl && dataUrl.startsWith('http')) {
+      if (post && nume) {
+        postId = post; // Save postId for API
+        servers.push({
+          name: serverName || `Server ${nume}`,
+          url: '', // URL will be fetched via AJAX
+          quality: serverName.toLowerCase().includes('720') ? '720p' : 
+                   serverName.toLowerCase().includes('1080') ? '1080p' : 'HD',
+          post: post,
+          nume: nume,
+          type: type || 'video',
+        });
+      }
+    });
+
+    // Also check for select dropdown options
+    $('select.mirror option, select option').each((_, el) => {
+      const $el = $(el);
+      const dataUrl = $el.attr('data-url') || $el.attr('value') || '';
+      const serverName = $el.text().trim();
+      
+      if (dataUrl && dataUrl.startsWith('http') && !servers.some(s => s.url === dataUrl)) {
+        servers.push({
+          name: serverName || 'Server',
+          url: dataUrl,
+          quality: serverName.includes('720') ? '720p' : serverName.includes('1080') ? '1080p' : 'HD',
+        });
+      }
+    });
+
+    // Find legacy server buttons
+    $('.player-embed .mirror-items a, .pemain a, .server-list a').each((_, el) => {
+      const $el = $(el);
+      const dataUrl = $el.attr('data-url') || $el.attr('data-video') || $el.attr('href') || '';
+      const serverName = $el.text().trim();
+      
+      if (dataUrl && dataUrl.startsWith('http') && !servers.some(s => s.url === dataUrl)) {
         servers.push({
           name: serverName || 'Server',
           url: dataUrl,
@@ -502,6 +547,7 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
       servers: servers,
       prevEpisode: prevEpisode,
       nextEpisode: nextEpisode,
+      postId: postId,
     };
 
     await setCache(cacheKey, detail);
@@ -513,6 +559,48 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
 }
 
 /**
+ * Get video stream URL from server via AJAX (for dynamic servers)
+ */
+export async function getServerStream(post: string, nume: string, type: string = 'video'): Promise<string | null> {
+  const cacheKey = `samehadaku:stream:${post}:${nume}:${type}`;
+  const cached = await getCached<string>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const response = await axiosInstance.post(
+      `${BASE_URL}/wp-admin/admin-ajax.php`,
+      new URLSearchParams({
+        action: 'player_ajax',
+        post: post,
+        nume: nume,
+        type: type,
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      }
+    );
+
+    const html = response.data;
+    const $ = cheerio.load(html);
+    const iframe = $('iframe').attr('src') || '';
+    
+    if (iframe) {
+      await setCache(cacheKey, iframe);
+      return iframe;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error fetching server stream:', error);
+    return null;
+  }
+}
+
+
+/**
  * Get anime by genre
  */
 export async function getAnimeByGenre(genre: string, page: number = 1): Promise<{ data: AnimeItem[]; hasNext: boolean }> {
@@ -521,7 +609,7 @@ export async function getAnimeByGenre(genre: string, page: number = 1): Promise<
   if (cached) return cached;
 
   try {
-    const url = `${BASE_URL}/genre/${genre}/page/${page}/`;
+    const url = `${BASE_URL}/genres/${genre}/page/${page}/`;
     const { data: html } = await axiosInstance.get(url);
     const $ = cheerio.load(html);
 
@@ -580,4 +668,6 @@ export default {
   getAnimeDetail,
   getEpisodeDetail,
   getAnimeByGenre,
+  getServerStream,
 };
+

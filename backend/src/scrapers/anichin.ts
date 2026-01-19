@@ -459,34 +459,62 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
     const episodeNumber = title.match(/Episode\s*(\d+)/i)?.[1] || '';
 
     const servers: StreamServer[] = [];
+    const seenUrls = new Set<string>();
 
-    // Find video iframes
+    // Find video iframes (default player)
     $('iframe').each((_, el) => {
       const src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && !src.includes('facebook') && !src.includes('twitter')) {
+      if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads') && !seenUrls.has(src)) {
+        seenUrls.add(src);
         servers.push({
-          name: 'Player',
+          name: 'Default Player',
           url: src,
           quality: 'HD',
         });
       }
     });
 
-    // Find server options
-    $('.mirror option, select.mirror option, select option').each((_, el) => {
+    // Find server options from select.mirror dropdown
+    // Anichin stores Base64-encoded iframe HTML in the value attribute
+    $('select.mirror option, .mirror option').each((_, el) => {
       const value = $(el).attr('value') || '';
       const text = $(el).text().trim();
       
-      if (value && value.startsWith('http')) {
+      // Skip empty or placeholder options
+      if (!value || text.toLowerCase().includes('pilih') || text.toLowerCase().includes('select')) {
+        return;
+      }
+      
+      // Try direct URL first
+      if (value.startsWith('http') && !seenUrls.has(value)) {
+        seenUrls.add(value);
         servers.push({
           name: text || 'Server',
           url: value,
           quality: text.includes('720') ? '720p' : text.includes('1080') ? '1080p' : 'HD',
         });
-      } else if (value && value.match(/^[A-Za-z0-9+/=]+$/)) {
+        return;
+      }
+      
+      // Try Base64 decoding (Anichin stores iframe HTML as Base64)
+      if (value.match(/^[A-Za-z0-9+/=]{20,}$/)) {
         try {
           const decoded = Buffer.from(value, 'base64').toString('utf-8');
-          if (decoded.startsWith('http')) {
+          // Extract iframe src from decoded HTML
+          const iframeSrcMatch = decoded.match(/src=["']([^"']+)["']/);
+          if (iframeSrcMatch && iframeSrcMatch[1]) {
+            const iframeSrc = iframeSrcMatch[1];
+            if (!seenUrls.has(iframeSrc)) {
+              seenUrls.add(iframeSrc);
+              servers.push({
+                name: text || 'Server',
+                url: iframeSrc,
+                quality: text.includes('720') ? '720p' : text.includes('1080') ? '1080p' : 'HD',
+              });
+            }
+          } else if (decoded.startsWith('http') && !seenUrls.has(decoded)) {
+            // Direct URL as Base64
+            seenUrls.add(decoded);
             servers.push({
               name: text || 'Server',
               url: decoded,
@@ -494,7 +522,7 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
             });
           }
         } catch {
-          // Not base64
+          // Not valid Base64, skip
         }
       }
     });
@@ -519,6 +547,7 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
   }
 }
 
+
 /**
  * Get donghua by genre
  */
@@ -528,7 +557,7 @@ export async function getDonghuaByGenre(genre: string, page: number = 1): Promis
   if (cached) return cached;
 
   try {
-    const url = `${BASE_URL}/genre/${genre}/page/${page}/`;
+    const url = `${BASE_URL}/genres/${genre}/page/${page}/`;
     const { data: html } = await axiosInstance.get(url);
     const $ = cheerio.load(html);
 

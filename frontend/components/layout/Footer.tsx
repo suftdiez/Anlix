@@ -11,18 +11,24 @@ export default function Footer() {
       { href: '/donghua', label: 'Donghua' },
       { href: '/search', label: 'Pencarian' },
     ],
-    genres: [
-      { href: '/genre/action', label: 'Action' },
-      { href: '/genre/romance', label: 'Romance' },
-      { href: '/genre/comedy', label: 'Comedy' },
-      { href: '/genre/fantasy', label: 'Fantasy' },
+    animeGenres: [
+      { href: '/anime/genre/action', label: 'Action' },
+      { href: '/anime/genre/romance', label: 'Romance' },
+      { href: '/anime/genre/comedy', label: 'Comedy' },
+      { href: '/anime/genre/fantasy', label: 'Fantasy' },
+    ],
+    donghuaGenres: [
+      { href: '/donghua/genre/action', label: 'Action' },
+      { href: '/donghua/genre/cultivation', label: 'Cultivation' },
+      { href: '/donghua/genre/martial-arts', label: 'Martial Arts' },
+      { href: '/donghua/genre/fantasy', label: 'Fantasy' },
     ],
   };
 
   return (
     <footer className="bg-dark-700 border-t border-white/5 mt-auto">
       <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
           {/* Brand */}
           <div className="md:col-span-2">
             <Link href="/" className="inline-block">
@@ -63,15 +69,32 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Genre Links */}
+          {/* Anime Genre Links */}
           <div>
-            <h4 className="text-white font-semibold mb-4">Genre Populer</h4>
+            <h4 className="text-white font-semibold mb-4">Genre Anime</h4>
             <ul className="space-y-2">
-              {footerLinks.genres.map((link) => (
+              {footerLinks.animeGenres.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
                     className="text-gray-400 hover:text-primary transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Donghua Genre Links */}
+          <div>
+            <h4 className="text-white font-semibold mb-4">Genre Donghua</h4>
+            <ul className="space-y-2">
+              {footerLinks.donghuaGenres.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-gray-400 hover:text-accent transition-colors"
                   >
                     {link.label}
                   </Link>

@@ -28,6 +28,8 @@ export default function Navbar() {
     { href: '/', label: 'Beranda' },
     { href: '/anime', label: 'Anime' },
     { href: '/donghua', label: 'Donghua' },
+    { href: '/anime/genre', label: 'Genre Anime' },
+    { href: '/donghua/genre', label: 'Genre Donghua' },
   ];
 
   return (

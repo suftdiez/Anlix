@@ -90,6 +90,11 @@ export const animeApi = {
     const res = await api.get(`/anime/episode/${slug}`);
     return res.data;
   },
+
+  getServerStream: async (post: string, nume: string, type: string = 'video') => {
+    const res = await api.post('/anime/stream', { post, nume, type });
+    return res.data;
+  },
 };
 
 // ============ DONGHUA API ============
