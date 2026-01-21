@@ -9,6 +9,7 @@ export default function Footer() {
       { href: '/', label: 'Beranda' },
       { href: '/anime', label: 'Anime' },
       { href: '/donghua', label: 'Donghua' },
+      { href: '/drama', label: 'Drama' },
       { href: '/search', label: 'Pencarian' },
     ],
     animeGenres: [

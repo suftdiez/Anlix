@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 
 import { connectDatabase } from './config/database';
 import redis from './config/redis';
-import { authRoutes, animeRoutes, donghuaRoutes, userRoutes } from './routes';
+import { authRoutes, animeRoutes, donghuaRoutes, userRoutes, dramaRoutes } from './routes';
 
 // Load environment variables
 dotenv.config();
@@ -71,18 +71,20 @@ app.use('/api/auth', authRoutes);
 app.use('/api/anime', animeRoutes);
 app.use('/api/donghua', donghuaRoutes);
 app.use('/api/user', userRoutes);
+app.use('/api/drama', dramaRoutes);
 
 // Root route
 app.get('/', (req, res) => {
   res.json({
     name: 'ANLIX API',
     version: '1.0.0',
-    description: 'Anime & Donghua Streaming API',
+    description: 'Anime, Donghua & Drama Streaming API',
     endpoints: {
       health: '/api/health',
       auth: '/api/auth',
       anime: '/api/anime',
       donghua: '/api/donghua',
+      drama: '/api/drama',
       user: '/api/user',
     },
   });

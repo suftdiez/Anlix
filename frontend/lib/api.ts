@@ -227,4 +227,71 @@ export const userApi = {
   },
 };
 
+// ============ DRAMA API (Melolo) ============
+export const dramaApi = {
+  getLatest: async () => {
+    const res = await api.get('/drama/latest');
+    return res.data;
+  },
+
+  getTrending: async () => {
+    const res = await api.get('/drama/trending');
+    return res.data;
+  },
+
+  search: async (query: string) => {
+    const res = await api.get(`/drama/search?q=${encodeURIComponent(query)}`);
+    return res.data;
+  },
+
+  getDetail: async (id: string) => {
+    const res = await api.get(`/drama/detail/${id}`);
+    return res.data;
+  },
+
+  getStream: async (vid: string) => {
+    const res = await api.get(`/drama/stream/${vid}`);
+    return res.data;
+  },
+};
+
+// ============ DRAMABOX API ============
+export const dramaboxApi = {
+  getLatest: async () => {
+    const res = await api.get('/drama/dramabox/latest');
+    return res.data;
+  },
+
+  getTrending: async () => {
+    const res = await api.get('/drama/dramabox/trending');
+    return res.data;
+  },
+
+  getDubbed: async (classify: 'terpopuler' | 'terbaru' = 'terpopuler', page = 1) => {
+    const res = await api.get(`/drama/dramabox/dubbed?classify=${classify}&page=${page}`);
+    return res.data;
+  },
+
+  getForYou: async () => {
+    const res = await api.get('/drama/dramabox/for-you');
+    return res.data;
+  },
+
+  search: async (query: string) => {
+    const res = await api.get(`/drama/dramabox/search?q=${encodeURIComponent(query)}`);
+    return res.data;
+  },
+
+  getDetail: async (id: string) => {
+    const res = await api.get(`/drama/dramabox/detail/${id}`);
+    return res.data;
+  },
+
+  getEpisodes: async (id: string) => {
+    const res = await api.get(`/drama/dramabox/episodes/${id}`);
+    return res.data;
+  },
+};
+
 export default api;
+
