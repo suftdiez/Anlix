@@ -1,0 +1,53 @@
+﻿Device ID: 5f8a90854da0488d
+
+1. Getting token...
+Token obtained: YES
+
+2. Getting drama detail for ID 85...
+
+Drama response structure:
+Top-level keys: [
+  'drama',
+  'episodePriceTitle',
+  'episodePriceText',
+  'userCoinAmountTitle',
+  'userCoinAmountText',
+  'isEarnRewardsBadgeVisible',
+  'badgeType',
+  'badgeData',
+  'vip',
+  'earnRewards',
+  'configuration',
+  'userInfo',
+  'coinAmount',
+  'isSubscribed'
+]
+
+Drama name: undefined
+Episodes key exists: false
+episodeList key exists: false
+
+Full response (first 2000 chars):
+{
+  "drama": {
+    "id": 85,
+    "name": "Cinta Tak Lekang Waktu",
+    "description": "Lila Turner, gadis nerd yang sering dibully, terlempar ke tahun 1924 sebagai pewaris mafia bernama Lila Romano.",
+    "poster": "https://cdn.dramadash.app/v1/file/vlfiles/6964a2bcd4da1caa08bef0f8_timelesslove_cover.jpeg",
+    "isAddedToMyList": false,
+    "episodes": [
+      {
+        "id": 4801,
+        "episodeNumber": 0,
+        "isLocked": false,
+        "isLiked": false,
+        "isWatched": false,
+        "duration": 0,
+        "current": true,
+        "videoUrl": "https://customer-9fv0bf992ubcss8n.cloudflarestream.com/eyJhbGciOiJSUzI1NiIsImtpZCI6ImI2MWQxZGZhNGU5MWE4ZWJhZjllZWYwNDVjOWY0YmQ4In0.eyJzdWIiOiJmYWMzOWY4MTUxMzYzNDVjNTRjZGE3YjhkNTFmNmRkZiIsImtpZCI6ImI2MWQxZGZhNGU5MWE4ZWJhZjllZWYwNDVjOWY0YmQ4IiwiZXhwIjoxNzY5MTU3NTQ1LCJuYmYiOjE3NjkxNTAzMzV9.kZutCMILdF8mC-YVnkD9uk7vfnrj_pRka286dOS2yE0wcaVzAmbV--9RwcNHGMiZGACHdhxxniFRVpPw-4NpWm2eoT62jPovRdDyf_U34cCR_yIweIb5wiq65Xj0TrOtjlm4eXu3lac6cCCBU-GqxbE5pitWhmiynwx-f2gbO3ipsFsQJT3uEPdbw0sygRVbLNzegSpnwbKkCtBb2X2tWLb0aHMaalcGJnXUg58A1FzznFrNx1mkytb6f1phyKwXoqo13MBOKj24C0Ehwlp9Yarf-CDaVEVsdrio3Ivacnfzg-lHBblVrJIAJB8ws93Xeirz1doiwgN76EFgdl3A-w/manifest/video.m3u8",
+        "subtitles": [
+          {
+            "language": "id",
+            "languageDisplayName": "Indonesian",
+            "url": "https://customer-9fv0bf992ubcss8n.cloudflarestream.com/eyJhbGciOiJSUzI1NiIsImtpZCI6ImI2MWQxZGZhNGU5MWE4ZWJhZjllZWYwNDVjOWY0YmQ4In0.eyJzdWIiOiJmYWMzOWY4MTUxMzYzNDVjNTRjZGE3YjhkNTFmNmRkZiIsImtpZCI6ImI2MWQxZGZhNGU5MWE4ZWJhZjllZWYwNDVjOWY0YmQ4IiwiZXhwIjoxNzY5MTU3NTQ1LCJuYmYiOjE3NjkxNTAzMzV9.kZutCMILdF8mC-YVnkD9uk7vfnrj_pRka286dOS2yE0wcaVzAmbV--9RwcNHGMiZGACHdhxxniFRVpPw-4NpWm2eoT62jPovRdDyf_U34cCR_yIweIb5wiq65Xj0TrOtjlm4eXu3lac6cCCBU-GqxbE5pitWhmiynwx-f2gbO3ipsFsQJT3uEPdbw0sygRVbLNzegSpnwbKkCtBb2X2tWLb0aHMaalcGJnXUg58A1FzznFrNx1mkytb6f1phyKwXoqo13MBOKj24C0Ehwlp9Yarf-CDaVEVsdrio3Ivacnfzg-lHBblVrJIAJB8ws93Xeirz1doiwgN76EFgdl3A-w/captions/id"
+      

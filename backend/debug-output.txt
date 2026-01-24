@@ -1,0 +1,46 @@
+﻿Device ID: d58d1f2a3eab4545
+
+Full response:
+{
+  "userCreated": true,
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vd3d3LmRyYW1hZGFzaC5hcHAvYXBpL2xhbmRpbmciLCJpYXQiOjE3NjkxNDczNTAsImV4cCI6MTc3MDM1Njk1MCwibmJmIjoxNzY5MTQ3MzUwLCJqdGkiOiJ4NldnbXBUd0RNOVFQdVEzIiwic3ViIjoiMTg0ODA0MSIsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjciLCJpc19ndWVzdCI6dHJ1ZSwicGxhdGZvcm0iOiJhbmRyb2lkIiwiYXBwX3ZlcnNpb24iOiI3MCIsInRva2VuX3R5cGUiOiJhdXRoZW50aWNhdGlvbiJ9.Ai3anyG0qbgKswao_4LyOpZ1YzPb4EYbGta2NNhHy08",
+  "refreshToken": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwOi8vd3d3LmRyYW1hZGFzaC5hcHAvYXBpL2xhbmRpbmciLCJpYXQiOjE3NjkxNDczNTAsImV4cCI6MTkyNjgyNzM1MCwibmJmIjoxNzY5MTQ3MzUwLCJqdGkiOiJyeGxWamlMTVcwREp5Q2JSIiwic3ViIjoiMTg0ODA0MSIsInBydiI6IjIzYmQ1Yzg5NDlmNjAwYWRiMzllNzAxYzQwMDg3MmRiN2E1OTc2ZjciLCJpc19ndWVzdCI6dHJ1ZSwicGxhdGZvcm0iOiJhbmRyb2lkIiwiYXBwX3ZlcnNpb24iOiI3MCIsInRva2VuX3R5cGUiOiJyZWZyZXNoIn0.zp1Yfm9BMawyj6Kv04c1TwQOCeGfi8P2hSqM2vQ4jPc",
+  "userId": 1848041,
+  "accountUuid": "b610042a-2055-5fb4-958c-c8c9a3b6aef6",
+  "configuration": {
+    "dramaConfiguration": {
+      "screenshotEnabled": false,
+      "videoRecordingEnabled": false,
+      "legalDialog": {
+        "type": "legal",
+        "data": {
+          "imageUrl": "https://cdn.dramadash.app/v1/file/vlfiles/68ca9e15d95abf823d5a1d32_ss_warning.png",
+          "description": "Sharing or reposting screenshots or recordings of DramaDash leads to legal action.",
+          "primaryButtonText": "OK"
+        },
+        "requiresSeen": false,
+        "seenPayload": {}
+      }
+    },
+    "paymentConfiguration": {
+      "isNativeSheetEnabled": false
+    },
+    "firebaseConfiguration": {
+      "isPerformanceMonitoringEnabled": true
+    },
+    "appConfiguration": {
+      "landingDestination": "for_you"
+    },
+    "supportConfiguration": {
+      "supportEnabled": false,
+      "hasWaitingMessage": false
+    }
+  },
+  "userInfo": {
+    "coinAmount": 0,
+    "isSubscribed": false,
+    "dailyCheckInCoinAmount": 10
+  },
+  "coinAmount": 0,
+  "isSubscribed": false
+}

@@ -1,0 +1,53 @@
+﻿Device ID: 7789ebe1e0594e52
+
+1. Getting token...
+Token obtained: YES
+
+2. Getting home data...
+
+Home response structure:
+Top-level keys: [
+  'dramaList',
+  'bannerDramaList',
+  'moreToExplore',
+  'trendingSearches',
+  'tabs',
+  'miniPlayer',
+  'isEarnRewardsBadgeVisible',
+  'configuration',
+  'userInfo',
+  'coinAmount',
+  'isSubscribed'
+]
+No "data" key. Full response: {
+  "dramaList": [
+    {
+      "isNameVisible": true,
+      "isDescriptionVisible": true,
+      "isGenreVisible": true,
+      "isTagVisible": true,
+      "list": [
+        {
+          "id": 85,
+          "name": "Cinta Tak Lekang Waktu",
+          "slug": "timeless-love",
+          "description": "Lila Turner, gadis nerd yang sering dibully, terlempar ke tahun 1924 sebagai pewaris mafia bernama Lila Romano.",
+          "gradientStartColor": "#FFFFFF",
+          "gradientEndColor": "#FFFFFF",
+          "poster": "https://cdn.dramadash.app/v1/file/vlfiles/6964a2bcd4da1caa08bef0f8_timelesslove_cover.jpeg",
+          "tags": [],
+          "genres": [
+            {
+              "name": "mafia",
+              "displayName": "Mafia"
+            },
+            {
+              "name": "revenge",
+              "displayName": "Balas Dendam"
+            },
+            {
+              "name": "secret_identity",
+              "displayName": "Identitas Rahasia"
+            },
+            {
+         
