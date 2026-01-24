@@ -3,6 +3,7 @@ import axios from 'axios';
 import convert from 'heic-convert';
 import * as melolo from '../services/melolo';
 import * as dramadash from '../services/dramadash';
+import * as dramaboxSansekai from '../services/dramabox-sansekai';
 
 const router = Router();
 
@@ -425,6 +426,142 @@ router.get('/dramabox/episodes/:id', async (req: Request, res: Response) => {
     res.json({ success: true, data: episodes });
   } catch (error) {
     console.error('Error fetching DramaDash episodes:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch episodes' });
+  }
+});
+
+// ============================================================
+// DRAMABOX SANSEKAI API ENDPOINTS (Third Source)
+// ============================================================
+
+/**
+ * GET /api/drama/dramabox-sansekai/latest
+ * Get latest dramas from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/latest', async (_req: Request, res: Response) => {
+  try {
+    const result = await dramaboxSansekai.getLatest();
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} latest dramas`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai latest:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch latest dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/trending
+ * Get trending dramas from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/trending', async (_req: Request, res: Response) => {
+  try {
+    const result = await dramaboxSansekai.getTrending();
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} trending dramas`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai trending:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch trending dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/dubindo
+ * Get dubbed indo dramas from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/dubindo', async (req: Request, res: Response) => {
+  try {
+    const classify = (req.query.classify as string) || 'terpopuler';
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await dramaboxSansekai.getDubindo(classify, page);
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} dubindo dramas (${classify}, page ${page})`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai dubindo:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch dubbed dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/vip
+ * Get VIP dramas from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/vip', async (_req: Request, res: Response) => {
+  try {
+    const result = await dramaboxSansekai.getVip();
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} VIP dramas`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai VIP:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch VIP dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/foryou
+ * Get recommendations from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/foryou', async (_req: Request, res: Response) => {
+  try {
+    const result = await dramaboxSansekai.getForYou();
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} for-you dramas`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai for-you:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch recommendations' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/search
+ * Search dramas from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/search', async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      res.status(400).json({ success: false, error: 'Query parameter q is required' });
+      return;
+    }
+    const result = await dramaboxSansekai.search(q);
+    console.log(`[DramaBox-Sansekai] Search "${q}" returned ${result.data?.length || 0} results`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error searching DramaBox-Sansekai:', error);
+    res.status(500).json({ success: false, error: 'Failed to search dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/detail/:id
+ * Get drama detail from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/detail/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await dramaboxSansekai.getDetail(id);
+    if (!result.success || !result.data) {
+      res.status(404).json({ success: false, error: 'Drama not found' });
+      return;
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai detail:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch drama detail' });
+  }
+});
+
+/**
+ * GET /api/drama/dramabox-sansekai/episodes/:id
+ * Get episodes from DramaBox Sansekai
+ */
+router.get('/dramabox-sansekai/episodes/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await dramaboxSansekai.getEpisodes(id);
+    console.log(`[DramaBox-Sansekai] Returning ${result.data?.length || 0} episodes for drama ${id}`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching DramaBox-Sansekai episodes:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch episodes' });
   }
 });

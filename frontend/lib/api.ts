@@ -293,5 +293,48 @@ export const dramaboxApi = {
   },
 };
 
+// ============ DRAMABOX SANSEKAI API (Third Source) ============
+export const dramaboxSansekaiApi = {
+  getLatest: async () => {
+    const res = await api.get('/drama/dramabox-sansekai/latest');
+    return res.data;
+  },
+
+  getTrending: async () => {
+    const res = await api.get('/drama/dramabox-sansekai/trending');
+    return res.data;
+  },
+
+  getDubindo: async (classify: 'terpopuler' | 'terbaru' = 'terpopuler', page = 1) => {
+    const res = await api.get(`/drama/dramabox-sansekai/dubindo?classify=${classify}&page=${page}`);
+    return res.data;
+  },
+
+  getVip: async () => {
+    const res = await api.get('/drama/dramabox-sansekai/vip');
+    return res.data;
+  },
+
+  getForYou: async () => {
+    const res = await api.get('/drama/dramabox-sansekai/foryou');
+    return res.data;
+  },
+
+  search: async (query: string) => {
+    const res = await api.get(`/drama/dramabox-sansekai/search?q=${encodeURIComponent(query)}`);
+    return res.data;
+  },
+
+  getDetail: async (id: string) => {
+    const res = await api.get(`/drama/dramabox-sansekai/detail/${id}`);
+    return res.data;
+  },
+
+  getEpisodes: async (id: string) => {
+    const res = await api.get(`/drama/dramabox-sansekai/episodes/${id}`);
+    return res.data;
+  },
+};
+
 export default api;
 

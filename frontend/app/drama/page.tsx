@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { FiHome, FiFilm, FiTrendingUp, FiMic, FiLayers, FiChevronRight, FiPlay, FiLoader } from 'react-icons/fi';
-import { dramaApi, dramaboxApi } from '@/lib/api';
+import { dramaApi, dramaboxApi, dramaboxSansekaiApi } from '@/lib/api';
 import { CardSkeleton } from '@/components/ui/Skeletons';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -19,10 +19,10 @@ interface DramaItem {
   episodeCount?: number;
   categories?: string[];
   playCount?: string;
-  source: 'melolo' | 'dramabox';
+  source: 'melolo' | 'dramabox' | 'dramabox-sansekai';
 }
 
-type TabType = 'all' | 'dramabox' | 'melolo';
+type TabType = 'all' | 'dramabox' | 'dramabox-sansekai' | 'melolo';
 
 // Helper to get Melolo image proxy URL - only proxy if not already proxied
 function getMeloloImageUrl(url: string): string {
@@ -61,13 +61,20 @@ export default function DramaPage() {
 
         switch (activeTab) {
           case 'all':
-            // Fetch from BOTH APIs and merge
-            const [meloloLatest, meloloTrending, dbLatest, dbTrending, dbForYou] = await Promise.all([
+            // Fetch from ALL THREE APIs and merge
+            const [
+              meloloLatest, meloloTrending, 
+              dbLatest, dbTrending, dbForYou,
+              sbLatest, sbTrending, sbDubindo
+            ] = await Promise.all([
               dramaApi.getLatest().catch(() => ({ data: [] })),
               dramaApi.getTrending().catch(() => ({ data: [] })),
               dramaboxApi.getLatest().catch(() => ({ data: [] })),
               dramaboxApi.getTrending().catch(() => ({ data: [] })),
               dramaboxApi.getForYou().catch(() => ({ data: [] })),
+              dramaboxSansekaiApi.getLatest().catch(() => ({ data: [] })),
+              dramaboxSansekaiApi.getTrending().catch(() => ({ data: [] })),
+              dramaboxSansekaiApi.getDubindo('terpopuler', 1).catch(() => ({ data: [] })),
             ]);
 
             // Add Melolo dramas with source tag and proxied images
@@ -77,7 +84,7 @@ export default function DramaPage() {
               source: 'melolo' as const,
             }));
 
-            // Add DramaBox dramas with source tag
+            // Add DramaDash dramas with source tag
             const dramaboxDramas = [
               ...(dbLatest.data || []), 
               ...(dbTrending.data || []),
@@ -87,12 +94,22 @@ export default function DramaPage() {
               source: 'dramabox' as const,
             }));
 
-            // Save all dramabox dramas for "load more"
-            setAllDramaboxDramas(dramaboxDramas);
+            // Add DramaBox Sansekai dramas with source tag
+            const sansekaiDramas = [
+              ...(sbLatest.data || []),
+              ...(sbTrending.data || []),
+              ...(sbDubindo.data || []),
+            ].map((d: any) => ({
+              ...d,
+              source: 'dramabox-sansekai' as const,
+            }));
 
-            // Merge and dedupe by title (dramabox first, then melolo)
+            // Save all for "load more"
+            setAllDramaboxDramas([...dramaboxDramas, ...sansekaiDramas]);
+
+            // Merge and dedupe by title (sansekai first, then dramabox, then melolo)
             const mergedMap = new Map<string, DramaItem>();
-            [...dramaboxDramas, ...meloloDramas].forEach(d => {
+            [...sansekaiDramas, ...dramaboxDramas, ...meloloDramas].forEach(d => {
               if (d.title && !mergedMap.has(d.title)) {
                 mergedMap.set(d.title, d);
               }
@@ -125,6 +142,45 @@ export default function DramaPage() {
             });
             allDramas = Array.from(dbMap.values());
             setAllDramaboxDramas(allDramas);
+            break;
+
+          case 'dramabox-sansekai':
+            console.log('[DramaBox-Sansekai] Fetching dramas...');
+            const [sbLat, sbTrend, sbDub, sbVip] = await Promise.all([
+              dramaboxSansekaiApi.getLatest().catch((e) => { console.error('[DramaBox-Sansekai] latest error:', e); return { data: [] }; }),
+              dramaboxSansekaiApi.getTrending().catch((e) => { console.error('[DramaBox-Sansekai] trending error:', e); return { data: [] }; }),
+              dramaboxSansekaiApi.getDubindo('terpopuler', 1).catch((e) => { console.error('[DramaBox-Sansekai] dubindo error:', e); return { data: [] }; }),
+              dramaboxSansekaiApi.getVip().catch((e) => { console.error('[DramaBox-Sansekai] vip error:', e); return { data: [] }; }),
+            ]);
+
+            console.log('[DramaBox-Sansekai] Results:', {
+              latest: sbLat?.data?.length || 0,
+              trending: sbTrend?.data?.length || 0,
+              dubindo: sbDub?.data?.length || 0,
+              vip: sbVip?.data?.length || 0,
+            });
+
+            const sbDramas = [
+              ...(sbLat.data || []),
+              ...(sbTrend.data || []),
+              ...(sbDub.data || []),
+              ...(sbVip.data || []),
+            ].map((d: any) => ({
+              ...d,
+              source: 'dramabox-sansekai' as const,
+            }));
+
+            console.log('[DramaBox-Sansekai] Total before dedupe:', sbDramas.length);
+
+            // Dedupe
+            const sbMap = new Map<string, DramaItem>();
+            sbDramas.forEach(d => {
+              if (d.title && !sbMap.has(d.title)) {
+                sbMap.set(d.title, d);
+              }
+            });
+            allDramas = Array.from(sbMap.values());
+            console.log('[DramaBox-Sansekai] Total after dedupe:', allDramas.length);
             break;
 
           case 'melolo':
@@ -204,6 +260,7 @@ export default function DramaPage() {
       poster: drama.poster || '',
       abstract: drama.abstract || '',
       eps: (drama.episodeCount || 0).toString(),
+      source: drama.source, // Pass source to detail page
     });
     return `/drama/dramabox/${drama.id}?${params.toString()}`;
   };
@@ -256,6 +313,17 @@ export default function DramaPage() {
           DramaDash
         </button>
         <button
+          onClick={() => setActiveTab('dramabox-sansekai')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+            activeTab === 'dramabox-sansekai'
+              ? 'bg-orange-500 text-white'
+              : 'bg-dark-card text-gray-400 hover:text-white'
+          }`}
+        >
+          <FiFilm className="w-4 h-4" />
+          DramaBox
+        </button>
+        <button
           onClick={() => setActiveTab('melolo')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
             activeTab === 'melolo'
@@ -305,9 +373,17 @@ export default function DramaPage() {
                       )}
                       {/* Source badge */}
                       <div className={`absolute top-2 left-2 px-2 py-1 text-white text-xs rounded-md font-medium ${
-                        drama.source === 'melolo' ? 'bg-purple-500/90' : 'bg-pink-500/90'
+                        drama.source === 'melolo' 
+                          ? 'bg-purple-500/90' 
+                          : drama.source === 'dramabox-sansekai' 
+                            ? 'bg-orange-500/90' 
+                            : 'bg-pink-500/90'
                       }`}>
-                        {drama.source === 'melolo' ? 'Melolo' : 'DramaDash'}
+                        {drama.source === 'melolo' 
+                          ? 'Melolo' 
+                          : drama.source === 'dramabox-sansekai' 
+                            ? 'DramaBox' 
+                            : 'DramaDash'}
                       </div>
                       {/* Episode badge */}
                       {drama.episodeCount && drama.episodeCount > 0 && (

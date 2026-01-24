@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { FiHome, FiFilm, FiPlay, FiStar, FiClock, FiChevronRight } from 'react-icons/fi';
-import { dramaboxApi } from '@/lib/api';
+import { dramaboxApi, dramaboxSansekaiApi } from '@/lib/api';
 
 interface DramaDetail {
   id: string;
@@ -38,11 +38,15 @@ export default function DramaBoxDetailPage() {
   const poster = searchParams?.get('poster') || '';
   const abstract = searchParams?.get('abstract') || '';
   const episodeCount = parseInt(searchParams?.get('eps') || '0');
+  const source = searchParams?.get('source') || 'dramabox'; // dramabox = DramaDash, dramabox-sansekai = new DramaBox
   
   const [drama, setDrama] = useState<DramaDetail | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(true);
+
+  // Use the appropriate API based on source
+  const api = source === 'dramabox-sansekai' ? dramaboxSansekaiApi : dramaboxApi;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,7 +69,7 @@ export default function DramaBoxDetailPage() {
       } else {
         // Fallback: try to get from API
         try {
-          const result = await dramaboxApi.getDetail(id);
+          const result = await api.getDetail(id);
           if (result.data) {
             setDrama(result.data);
           }
@@ -79,7 +83,7 @@ export default function DramaBoxDetailPage() {
       // Fetch episodes
       setIsLoadingEpisodes(true);
       try {
-        const epResult = await dramaboxApi.getEpisodes(id);
+        const epResult = await api.getEpisodes(id);
         setEpisodes(epResult.data || []);
       } catch (error) {
         console.error('Failed to fetch episodes:', error);
@@ -89,7 +93,7 @@ export default function DramaBoxDetailPage() {
     };
 
     fetchData();
-  }, [id, title, poster, abstract, episodeCount]);
+  }, [id, title, poster, abstract, episodeCount, api]);
 
   if (isLoading) {
     return (
@@ -204,7 +208,7 @@ export default function DramaBoxDetailPage() {
 
           {episodes.length > 0 && (
             <Link
-              href={`/drama/dramabox/${id}/watch?ep=1&title=${encodeURIComponent(drama.title)}`}
+              href={`/drama/dramabox/${id}/watch?ep=1&title=${encodeURIComponent(drama.title)}&source=${source}`}
               className="inline-flex items-center gap-2 px-6 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-lg transition-colors"
             >
               <FiPlay className="w-5 h-5" />
@@ -231,7 +235,7 @@ export default function DramaBoxDetailPage() {
             {episodes.map((ep) => (
               <Link
                 key={ep.id}
-                href={`/drama/dramabox/${id}/watch?ep=${ep.index}`}
+                href={`/drama/dramabox/${id}/watch?ep=${ep.index}&title=${encodeURIComponent(drama.title)}&source=${source}`}
                 className="flex items-center justify-center px-3 py-2 bg-dark-card hover:bg-pink-500/20 border border-white/5 hover:border-pink-500/50 rounded-lg text-sm text-gray-300 hover:text-white transition-all"
               >
                 {ep.index}

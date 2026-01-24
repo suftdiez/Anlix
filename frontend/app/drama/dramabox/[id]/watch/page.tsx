@@ -5,14 +5,21 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FiHome, FiFilm, FiChevronLeft, FiChevronRight, FiList, FiAlertCircle } from 'react-icons/fi';
-import { dramaboxApi } from '@/lib/api';
+import { dramaboxApi, dramaboxSansekaiApi } from '@/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-// Get full video URL (backend returns relative proxy URL)
-function getVideoUrl(videoPath: string): string {
+// Get full video URL - proxy external videos to bypass CORS
+function getVideoUrl(videoPath: string, source: string = 'dramabox'): string {
   if (!videoPath) return '';
-  if (videoPath.startsWith('http')) return videoPath;
+  
+  // If it starts with http, we need to proxy it through our backend for CORS
+  if (videoPath.startsWith('http')) {
+    // Use video proxy for external URLs (DramaBox CDN, etc.)
+    return `${API_URL}/api/drama/video?url=${encodeURIComponent(videoPath)}`;
+  }
+  
+  // Already a relative proxy URL from backend
   return `${API_URL}${videoPath}`;
 }
 
@@ -30,12 +37,16 @@ export default function DramaBoxWatchPage() {
   const id = params?.id as string;
   const epNum = parseInt(searchParams?.get('ep') || '1');
   const dramaTitle = searchParams?.get('title') || 'Drama';
+  const source = searchParams?.get('source') || 'dramabox';
 
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [currentEpisode, setCurrentEpisode] = useState<Episode | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEpisodeList, setShowEpisodeList] = useState(false);
+
+  // Use the appropriate API based on source
+  const api = source === 'dramabox-sansekai' ? dramaboxSansekaiApi : dramaboxApi;
 
   useEffect(() => {
     const fetchEpisodes = async () => {
@@ -46,7 +57,7 @@ export default function DramaBoxWatchPage() {
       
       try {
         // Fetch episodes only (detail API doesn't work)
-        const epResult = await dramaboxApi.getEpisodes(id);
+        const epResult = await api.getEpisodes(id);
         const eps = epResult.data || [];
         
         if (eps.length === 0) {
@@ -74,7 +85,7 @@ export default function DramaBoxWatchPage() {
     };
 
     fetchEpisodes();
-  }, [id, epNum]);
+  }, [id, epNum, api]);
 
   // Debug logging
   useEffect(() => {
