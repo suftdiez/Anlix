@@ -15,7 +15,7 @@ interface AnimeCardProps {
   rating?: string;
   latestEpisode?: string;
   status?: string;
-  contentType?: 'anime' | 'donghua';
+  contentType?: 'anime' | 'donghua' | 'film';
   index?: number;
 }
 
@@ -30,7 +30,11 @@ export default function AnimeCard({
   contentType = 'anime',
   index = 0,
 }: AnimeCardProps) {
-  const href = contentType === 'donghua' ? `/donghua/${slug}` : `/anime/${slug}`;
+  const href = contentType === 'donghua' 
+    ? `/donghua/${slug}` 
+    : contentType === 'film' 
+    ? `/film/${slug}` 
+    : `/anime/${slug}`;
 
   return (
     <motion.div

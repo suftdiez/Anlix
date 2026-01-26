@@ -336,5 +336,39 @@ export const dramaboxSansekaiApi = {
   },
 };
 
+// ============ FILM API (LK21) ============
+export const filmApi = {
+  getLatest: async (page = 1) => {
+    const res = await api.get(`/film/latest?page=${page}`);
+    return res.data;
+  },
+
+  getTrending: async () => {
+    const res = await api.get('/film/trending');
+    return res.data;
+  },
+
+  search: async (query: string, page = 1) => {
+    const res = await api.get(`/film/search?q=${encodeURIComponent(query)}&page=${page}`);
+    return res.data;
+  },
+
+  getDetail: async (slug: string) => {
+    const res = await api.get(`/film/detail/${slug}`);
+    return res.data;
+  },
+
+  getByGenre: async (genre: string, page = 1) => {
+    const res = await api.get(`/film/genre/${genre}?page=${page}`);
+    return res.data;
+  },
+
+  getByCountry: async (country: string, page = 1) => {
+    const res = await api.get(`/film/country/${country}?page=${page}`);
+    return res.data;
+  },
+};
+
 export default api;
+
 

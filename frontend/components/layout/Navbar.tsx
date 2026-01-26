@@ -29,6 +29,7 @@ export default function Navbar() {
     { href: '/anime', label: 'Anime' },
     { href: '/donghua', label: 'Donghua' },
     { href: '/drama', label: 'Drama' },
+    { href: '/film', label: 'Film' },
     { href: '/anime/genre', label: 'Genre Anime' },
     { href: '/donghua/genre', label: 'Genre Donghua' },
   ];
@@ -228,7 +229,7 @@ export default function Navbar() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari anime, donghua, atau drama..."
+                  placeholder="Cari anime, donghua, drama, atau film..."
                   className="w-full pl-12 pr-4 py-4 bg-dark-card border border-white/10 rounded-xl text-white text-lg placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
                   autoFocus
                 />
