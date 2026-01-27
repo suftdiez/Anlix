@@ -9,7 +9,7 @@ export const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 120000, // 2 minutes for slow scraping operations
 });
 
 // Add auth token to requests
@@ -365,6 +365,17 @@ export const filmApi = {
 
   getByCountry: async (country: string, page = 1) => {
     const res = await api.get(`/film/country/${country}?page=${page}`);
+    return res.data;
+  },
+
+  // Series methods
+  getSeriesDetail: async (slug: string) => {
+    const res = await api.get(`/film/series/${slug}`);
+    return res.data;
+  },
+
+  getEpisodeStream: async (slug: string) => {
+    const res = await api.get(`/film/episode/${slug}/stream`);
     return res.data;
   },
 };

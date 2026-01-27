@@ -144,4 +144,52 @@ router.get('/country/:country', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/film/series/:slug
+ * Get series detail with seasons and episodes
+ */
+router.get('/series/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const result = await lk21.getSeriesDetail(slug);
+    
+    if (!result) {
+      res.status(404).json({ success: false, error: 'Series not found or not a series' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching series detail:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch series detail' });
+  }
+});
+
+/**
+ * GET /api/film/episode/:slug/stream
+ * Get streaming servers for a specific episode
+ */
+router.get('/episode/:slug/stream', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const servers = await lk21.getEpisodeStreaming(slug);
+    
+    if (!servers || servers.length === 0) {
+      res.status(404).json({ success: false, error: 'Episode servers not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: servers,
+    });
+  } catch (error) {
+    console.error('Error fetching episode streaming:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch episode servers' });
+  }
+});
+
 export default router;

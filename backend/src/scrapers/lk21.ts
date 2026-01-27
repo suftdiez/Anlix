@@ -74,6 +74,26 @@ export interface StreamServer {
   quality?: string;
 }
 
+// Series interfaces
+export interface Season {
+  number: number;
+  episodeCount: number;
+}
+
+export interface Episode {
+  season: number;
+  episode: number;
+  title: string;
+  slug: string;
+  url: string;
+}
+
+export interface SeriesDetail extends FilmDetail {
+  isSeries: boolean;
+  seasons: Season[];
+  episodes: Episode[];
+}
+
 // Helper to get cached data
 async function getCached<T>(key: string): Promise<T | null> {
   const redisCache = await redis.get(key);
@@ -499,34 +519,89 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
     const durationText = $('[itemprop="duration"], .duration, .runtime').text();
     const duration = durationText.match(/\d+:\d+|\d+\s*(?:min|menit)/i)?.[0] || '';
 
-    // Streaming servers - find iframes
+    // Streaming servers - use Puppeteer to get dynamically loaded server tabs
     const servers: StreamServer[] = [];
     
-    $('iframe').each((_, el) => {
-      const src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
+    try {
+      const puppeteer = await import('puppeteer');
+      const browser = await puppeteer.default.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      
+      const browserPage = await browser.newPage();
+      await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+      await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      
+      // Wait for player to load (LK21 shows "Tunggu" message while loading)
+      await new Promise(r => setTimeout(r, 5000));
+      
+      // Extract server tabs from the page
+      const serverData = await browserPage.evaluate(() => {
+        const result: Array<{name: string, url: string}> = [];
+        
+        // Get main player iframe first
+        const mainPlayer = document.getElementById('main-player') as HTMLIFrameElement;
+        if (mainPlayer && mainPlayer.src) {
+          result.push({
+            name: 'GANTI PLAYER',
+            url: mainPlayer.src,
+          });
+        }
+        
+        // Get all server tab links (P2P, TURBOVIP, CAST, HYDRAX)
+        document.querySelectorAll('a[href*="playeriframe.sbs"]').forEach((el) => {
+          const link = el as HTMLAnchorElement;
+          const name = link.textContent?.trim() || 'Server';
+          const href = link.href;
+          
+          // Avoid duplicates
+          if (href && !result.some(s => s.url === href)) {
+            result.push({ name, url: href });
+          }
+        });
+        
+        // Also try other possible iframe embed sources
+        document.querySelectorAll('a[href*="embed"], a[href*="player"]').forEach((el) => {
+          const link = el as HTMLAnchorElement;
+          const name = link.textContent?.trim() || 'Server';
+          const href = link.href;
+          
+          if (href && href.startsWith('http') && !result.some(s => s.url === href)) {
+            result.push({ name, url: href });
+          }
+        });
+        
+        return result;
+      });
+      
+      await browser.close();
+      
+      // Convert to StreamServer format
+      serverData.forEach((s, idx) => {
         servers.push({
-          name: 'Player 1',
-          url: src,
+          name: s.name || `Server ${idx + 1}`,
+          url: s.url,
           quality: 'HD',
         });
-      }
-    });
-
-    // Also look for player buttons
-    $('[data-server], [data-url], .server-item, .player-option').each((idx, el) => {
-      const $el = $(el);
-      const serverUrl = $el.attr('data-server') || $el.attr('data-url') || $el.attr('href') || '';
-      const serverName = $el.text().trim() || `Server ${idx + 1}`;
+      });
       
-      if (serverUrl && serverUrl.startsWith('http') && !servers.some(s => s.url === serverUrl)) {
-        servers.push({
-          name: serverName,
-          url: serverUrl,
-          quality: serverName.includes('720') ? '720p' : serverName.includes('1080') ? '1080p' : 'HD',
-        });
-      }
-    });
+      console.log(`[LK21] Found ${servers.length} servers for ${slug}`);
+    } catch (puppeteerError) {
+      console.error('[LK21] Puppeteer server extraction failed:', puppeteerError);
+      
+      // Fallback to Cheerio-based extraction
+      $('iframe').each((_, el) => {
+        const src = $(el).attr('src') || $(el).attr('data-src') || '';
+        if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
+          servers.push({
+            name: 'Player 1',
+            url: src,
+            quality: 'HD',
+          });
+        }
+      });
+    }
 
     const detail: FilmDetail = {
       id: slug,
@@ -691,6 +766,335 @@ export async function getFilmsByCountry(country: string, page: number = 1): Prom
   }
 }
 
+/**
+ * Get series detail with seasons and episodes
+ * Strategy: Visit episode 1 of season 1, extract "Season X dari Y" to get total seasons,
+ * then for each season, visit episode 1 and extract episode buttons (small numbered buttons)
+ */
+export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null> {
+  const cacheKey = `lk21:series:${slug}`;
+  const cached = await getCached<SeriesDetail>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    const browserPage = await browser.newPage();
+    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    const SERIES_URL = 'https://tv3.nontondrama.my';
+    
+    // Parse slug to extract base name and year
+    // Input: "breaking-bad-2008" -> baseName: "breaking-bad", year: "2008"
+    const yearMatch = slug.match(/-(\d{4})$/);
+    const seriesYear = yearMatch ? yearMatch[1] : '';
+    const baseName = seriesYear ? slug.replace(`-${seriesYear}`, '') : slug;
+    
+    console.log(`[LK21] Parsed slug: baseName="${baseName}", year="${seriesYear}"`);
+    
+    // Episode URL format: base-name-season-X-episode-Y-year
+    // e.g., "breaking-bad-season-1-episode-1-2008"
+    const firstEpisodeUrl = `${SERIES_URL}/${baseName}-season-1-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+    console.log('[LK21] Fetching first episode:', firstEpisodeUrl);
+    
+    await browserPage.goto(firstEpisodeUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+    await new Promise(r => setTimeout(r, 5000));
+
+    // Extract basic info and total seasons
+    const basicInfo = await browserPage.evaluate(() => {
+      const data = {
+        title: '',
+        poster: '',
+        year: '',
+        totalSeasons: 0,
+        isSeries: false,
+      };
+
+      // Get title - remove Season/Episode suffix
+      const h1 = document.querySelector('h1');
+      let title = h1?.textContent?.trim() || document.title.split('|')[0].trim();
+      title = title.replace(/\s*[-–]\s*Season.*$/i, '').replace(/\s*Season.*$/i, '').trim();
+      data.title = title;
+
+      // Get poster
+      const posterMeta = document.querySelector('meta[property="og:image"]') as HTMLMetaElement | null;
+      data.poster = posterMeta?.content || '';
+
+      // Get year from URL
+      const yearMatch = window.location.href.match(/-(\d{4})(?:[/-]|$)/);
+      data.year = yearMatch ? yearMatch[1] : '';
+
+      // Find "Season X dari Y" text to get total seasons
+      const bodyText = document.body.innerText;
+      const seasonDariMatch = bodyText.match(/Season\s*\d+\s*dari\s*(\d+)/i);
+      if (seasonDariMatch) {
+        data.totalSeasons = parseInt(seasonDariMatch[1]);
+        data.isSeries = true;
+      }
+
+      // Also check h1/h2 text for season info
+      const headings = document.querySelectorAll('h1, h2, h3');
+      headings.forEach(h => {
+        const text = h.textContent || '';
+        if (text.toLowerCase().includes('season') && text.toLowerCase().includes('episode')) {
+          data.isSeries = true;
+        }
+      });
+
+      return data;
+    });
+
+    if (!basicInfo.isSeries || basicInfo.totalSeasons === 0) {
+      console.log(`[LK21] ${slug} is not detected as series or no seasons found`);
+      await browser.close();
+      return null;
+    }
+
+    console.log(`[LK21] Found series with ${basicInfo.totalSeasons} seasons`);
+
+    // Initialize seasons
+    const seasons: Season[] = [];
+    const episodes: Episode[] = [];
+    
+    for (let i = 1; i <= basicInfo.totalSeasons; i++) {
+      seasons.push({ number: i, episodeCount: 0 });
+    }
+
+    // For each season, visit episode 1 and extract episode buttons
+    for (let seasonNum = 1; seasonNum <= basicInfo.totalSeasons; seasonNum++) {
+      // Use baseName with year at end: base-name-season-X-episode-1-year
+      const seasonEpUrl = `${SERIES_URL}/${baseName}-season-${seasonNum}-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+      console.log(`[LK21] Scraping season ${seasonNum}: ${seasonEpUrl}`);
+
+      try {
+        await browserPage.goto(seasonEpUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await new Promise(r => setTimeout(r, 3000));
+
+        // Extract episode buttons - look for small boxes with just numbers
+        const seasonEps = await browserPage.evaluate((sNum: number, bName: string, yr: string) => {
+          const eps: Array<{episode: number, slug: string}> = [];
+          const seenNums = new Set<number>();
+
+          // Find all links/buttons with just a number (1-99) as text
+          // Episode buttons are typically small numbered boxes
+          document.querySelectorAll('a').forEach(link => {
+            const text = (link.textContent || '').trim();
+            const href = link.href || '';
+            
+            // Check if text is just a small number (episode number)
+            if (/^[1-9]\d?$/.test(text)) {
+              const epNum = parseInt(text);
+              
+              // Verify this looks like an episode link (should contain season-X-episode-Y pattern)
+              // or be a simple numbered button in the episode area
+              const isEpisodeLink = href.includes(`-season-${sNum}-episode-`);
+              const isSimpleNumber = epNum >= 1 && epNum <= 50;
+              
+              if ((isEpisodeLink || isSimpleNumber) && !seenNums.has(epNum)) {
+                seenNums.add(epNum);
+                // Construct proper slug: base-name-season-X-episode-Y-year
+                const epSlug = `${bName}-season-${sNum}-episode-${epNum}${yr ? '-' + yr : ''}`;
+                eps.push({ episode: epNum, slug: epSlug });
+              }
+            }
+          });
+
+          // Sort by episode number
+          eps.sort((a, b) => a.episode - b.episode);
+          return eps;
+        }, seasonNum, baseName, seriesYear);
+
+        // Add episodes for this season
+        seasonEps.forEach(ep => {
+          episodes.push({
+            season: seasonNum,
+            episode: ep.episode,
+            title: `Episode ${ep.episode}`,
+            slug: ep.slug,
+            url: `${SERIES_URL}/${ep.slug}`,
+          });
+        });
+
+        // Update season episode count
+        const maxEp = seasonEps.length > 0 ? Math.max(...seasonEps.map(e => e.episode)) : 0;
+        seasons[seasonNum - 1].episodeCount = maxEp;
+
+        console.log(`[LK21] Season ${seasonNum}: ${seasonEps.length} episodes (max: ${maxEp})`);
+      } catch (err) {
+        console.error(`[LK21] Error scraping season ${seasonNum}:`, err);
+        // If season page fails, it might not exist - that's OK
+      }
+    }
+
+    await browser.close();
+
+    // Sort episodes
+    episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
+
+    const detail: SeriesDetail = {
+      id: slug,
+      title: basicInfo.title.substring(0, 150),
+      slug,
+      poster: basicInfo.poster,
+      year: basicInfo.year,
+      rating: '',
+      synopsis: 'Tidak ada sinopsis.',
+      genres: [],
+      servers: [],
+      url: `${SERIES_URL}/${slug}`,
+      isSeries: true,
+      seasons,
+      episodes,
+    };
+
+    console.log(`[LK21] Final: ${seasons.length} seasons, ${episodes.length} episodes`);
+    
+    await setCache(cacheKey, detail, 1800);
+    return detail;
+  } catch (error) {
+    console.error('[LK21] Error fetching series detail:', error);
+    return null;
+  }
+}
+
+/**
+ * Get streaming servers for a specific episode
+ */
+export async function getEpisodeStreaming(episodeSlug: string): Promise<StreamServer[]> {
+  const cacheKey = `lk21:episode:${episodeSlug}`;
+  const cached = await getCached<StreamServer[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const puppeteer = await import('puppeteer');
+    const browser = await puppeteer.default.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+
+    const browserPage = await browser.newPage();
+    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+    
+    // LK21 series/episodes use nontondrama.my domain
+    const SERIES_URL = 'https://tv3.nontondrama.my';
+    const url = `${SERIES_URL}/${episodeSlug}`;
+    
+    console.log('[LK21] Fetching episode from:', url);
+    
+    await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    
+    // Wait for player to load
+    await new Promise(r => setTimeout(r, 7000));
+
+    // Extract server tabs (same logic as film)
+    const serverData = await browserPage.evaluate(() => {
+      const result: Array<{name: string, url: string}> = [];
+      
+      // Get main player iframe first
+      const mainPlayer = document.getElementById('main-player') as HTMLIFrameElement;
+      if (mainPlayer && mainPlayer.src) {
+        result.push({
+          name: 'GANTI PLAYER',
+          url: mainPlayer.src,
+        });
+      }
+      
+      // Also try to get iframe without ID
+      if (result.length === 0) {
+        const iframes = document.querySelectorAll('iframe[src*="player"], iframe[src*="embed"]');
+        iframes.forEach(iframe => {
+          const src = (iframe as HTMLIFrameElement).src;
+          if (src && !result.some(s => s.url === src)) {
+            result.push({ name: 'PLAYER', url: src });
+          }
+        });
+      }
+      
+      // Get all server tab links - multiple selector patterns
+      // Pattern 1: Links with playeriframe.sbs
+      document.querySelectorAll('a[href*="playeriframe.sbs"]').forEach((el) => {
+        const link = el as HTMLAnchorElement;
+        const name = link.textContent?.trim() || 'Server';
+        const href = link.href;
+        
+        if (href && !result.some(s => s.url === href)) {
+          result.push({ name, url: href });
+        }
+      });
+      
+      // Pattern 2: Server tab buttons with data attributes
+      document.querySelectorAll('[data-url], [data-src], [data-video]').forEach(el => {
+        const url = el.getAttribute('data-url') || el.getAttribute('data-src') || el.getAttribute('data-video') || '';
+        const name = el.textContent?.trim() || 'Server';
+        if (url && !result.some(s => s.url === url)) {
+          result.push({ name, url });
+        }
+      });
+      
+      // Pattern 3: Look for common server names in link text
+      const serverNames = ['P2P', 'TURBOVIP', 'CAST', 'HYDRAX', 'HD', 'SERVER', 'PLAYER'];
+      document.querySelectorAll('a[href]').forEach(el => {
+        const link = el as HTMLAnchorElement;
+        const name = link.textContent?.trim().toUpperCase() || '';
+        const href = link.href;
+        
+        // Check if the text matches known server names
+        const isServer = serverNames.some(sn => name.includes(sn));
+        const isPlayerUrl = href.includes('player') || href.includes('embed') || href.includes('stream');
+        
+        if ((isServer || isPlayerUrl) && href && !result.some(s => s.url === href) && !href.includes('/episode-')) {
+          result.push({ name: link.textContent?.trim() || 'Server', url: href });
+        }
+      });
+      
+      // Pattern 4: Look in the player area for tabs
+      const playerArea = document.querySelector('.player-area, .player-tabs, .tabs, .server-list');
+      if (playerArea) {
+        playerArea.querySelectorAll('a[href]').forEach(el => {
+          const link = el as HTMLAnchorElement;
+          const name = link.textContent?.trim() || 'Server';
+          const href = link.href;
+          if (href && !result.some(s => s.url === href) && !href.includes('/episode-')) {
+            result.push({ name, url: href });
+          }
+        });
+      }
+      
+      return result;
+    });
+
+    await browser.close();
+
+    // Only keep the 4 valid servers: GANTI PLAYER, TURBOVIP, CAST, HYDRAX
+    const validServerNames = ['GANTI PLAYER', 'TURBOVIP', 'CAST', 'HYDRAX', 'P2P'];
+    const filteredServers = serverData.filter(s => {
+      const name = (s.name || '').toUpperCase().trim();
+      return validServerNames.some(valid => name.includes(valid));
+    });
+
+    const servers: StreamServer[] = filteredServers.map((s, idx) => ({
+      name: s.name || `Server ${idx + 1}`,
+      url: s.url,
+      quality: 'HD',
+    }));
+
+    console.log(`[LK21] Found ${servers.length} valid servers (filtered from ${serverData.length})`);
+    
+    if (servers.length > 0) {
+      await setCache(cacheKey, servers);
+    }
+    
+    return servers;
+  } catch (error) {
+    console.error('[LK21] Error fetching episode streaming:', error);
+    return [];
+  }
+}
+
 export default {
   getLatestFilms,
   getTrendingFilms,
@@ -698,4 +1102,6 @@ export default {
   getFilmDetail,
   getFilmsByGenre,
   getFilmsByCountry,
+  getSeriesDetail,
+  getEpisodeStreaming,
 };

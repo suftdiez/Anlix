@@ -27,6 +27,7 @@ interface FilmDetail {
   country?: string;
   translator?: string;
   servers: StreamServer[];
+  isSeries?: boolean;
 }
 
 export default function FilmDetailPage() {
@@ -46,8 +47,22 @@ export default function FilmDetailPage() {
       setError(null);
 
       try {
+        // First try to get film detail
         const response = await filmApi.getDetail(slug);
         if (response.success && response.data) {
+          // Check if it might be a series (no servers = likely series)
+          if (!response.data.servers || response.data.servers.length === 0) {
+            // Try to get series detail
+            try {
+              const seriesResponse = await filmApi.getSeriesDetail(slug);
+              if (seriesResponse.success && seriesResponse.data) {
+                setFilm({ ...seriesResponse.data, isSeries: true });
+                return;
+              }
+            } catch {
+              // Not a series, continue with film
+            }
+          }
           setFilm(response.data);
         } else {
           setError('Film tidak ditemukan');
@@ -129,8 +144,21 @@ export default function FilmDetailPage() {
             )}
           </div>
 
-          {/* Watch Button */}
-          {film.servers && film.servers.length > 0 && (
+          {/* Series: Show Episodes Button */}
+          {film.isSeries && (
+            <Link
+              href={`/film/${film.slug}/episodes`}
+              className="btn-primary w-full mt-4 flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+              </svg>
+              Lihat Episode
+            </Link>
+          )}
+
+          {/* Film: Watch Button */}
+          {!film.isSeries && film.servers && film.servers.length > 0 && (
             <Link
               href={`/film/${film.slug}/watch`}
               className="btn-primary w-full mt-4 flex items-center justify-center gap-2"
