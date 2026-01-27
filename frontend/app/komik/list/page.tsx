@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { FiSearch } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
 
 interface Comic {
@@ -39,8 +40,18 @@ export default function KomikListPage() {
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-white">Daftar Komik</h1>
+      <div className="mb-6">
+        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Daftar Komik</h1>
+        <p className="text-gray-400 mb-4">Semua komik manga, manhwa, dan manhua</p>
+        
+        {/* Search Button */}
+        <Link
+          href="/komik/search"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+        >
+          <FiSearch className="w-4 h-4" />
+          Cari Komik
+        </Link>
       </div>
 
       {/* Navigation Tabs */}

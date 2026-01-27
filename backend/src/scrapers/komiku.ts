@@ -462,10 +462,20 @@ export async function getDetail(slug: string): Promise<ComicDetail | null> {
         
         const chapterSlug = href.split('/').filter(Boolean).pop() || '';
         
-        // Extract update time
-        const chapterText = link.textContent?.trim() || '';
-        const timeMatch = chapterText.match(/(\d+)\s*(menit|jam|hari|bulan|tahun)/i);
-        const updatedAt = timeMatch ? `${timeMatch[1]} ${timeMatch[2]}` : '';
+        // Extract update time from the last span in the link (time is in separate span)
+        // Structure: <a><div><span>Chapter 142</span><span>2 tahun</span></div></a>
+        const timeSpans = link.querySelectorAll('span');
+        let updatedAt = '';
+        if (timeSpans.length > 0) {
+          // Get the last span which contains the time
+          const lastSpan = timeSpans[timeSpans.length - 1];
+          const timeText = lastSpan.textContent?.trim() || '';
+          // Validate it looks like a time (e.g., "2 tahun", "5 hari")
+          const timeMatch = timeText.match(/^(\d+)\s*(menit|jam|hari|bulan|tahun)$/i);
+          if (timeMatch) {
+            updatedAt = `${timeMatch[1]} ${timeMatch[2]}`;
+          }
+        }
         
         chapters.push({
           number: chapterNum,
