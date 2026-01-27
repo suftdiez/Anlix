@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { FiSearch, FiGrid } from 'react-icons/fi';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
 import { filmApi } from '@/lib/api';
 
@@ -125,9 +127,27 @@ export default function FilmPage() {
         <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
           Daftar <span className="gradient-text">Film</span>
         </h1>
-        <p className="text-gray-400">
+        <p className="text-gray-400 mb-4">
           Koleksi film subtitle Indonesia terbaru dengan kualitas HD
         </p>
+        
+        {/* Action Buttons */}
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/film/search"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Film
+          </Link>
+          <Link
+            href="/film/genre"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiGrid className="w-4 h-4" />
+            Lihat Genre
+          </Link>
+        </div>
       </div>
 
       {/* Error Message */}

@@ -323,56 +323,89 @@ export async function getTrendingFilms(): Promise<{ data: FilmItem[]; hasNext: b
 }
 
 /**
- * Search films
+ * Search films using Puppeteer for JavaScript rendering
  */
 export async function searchFilms(query: string, page: number = 1): Promise<{ data: FilmItem[]; hasNext: boolean }> {
   const cacheKey = `lk21:search:${query}:${page}`;
   const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
   if (cached) return cached;
 
+  let browser = null;
+  
   try {
-    const url = `${BASE_URL}/search/${encodeURIComponent(query)}${page > 1 ? `/page/${page}` : ''}`;
-    const html = await throttledRequest(url);
-    const $ = cheerio.load(html);
-
-    const films: FilmItem[] = [];
-    const seen = new Set<string>();
-
-    // Parse search results
-    $('.search-results a, .grid-item, article, .film-item').each((_, el) => {
-      const film = parseFilmCard($, el);
-      if (film && !seen.has(film.slug)) {
-        seen.add(film.slug);
-        films.push(film);
-      }
+    // Dynamic import of puppeteer
+    const puppeteer = await import('puppeteer');
+    
+    const url = page > 1 
+      ? `${BASE_URL}/search/page/${page}/?s=${encodeURIComponent(query)}`
+      : `${BASE_URL}/search?s=${encodeURIComponent(query)}`;
+    console.log(`[LK21] Searching with Puppeteer: ${url}`);
+    
+    // Launch headless browser
+    browser = await puppeteer.default.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
-
-    // Fallback: find all movie links
-    if (films.length === 0) {
-      $('a[href*="lk21official.cc"]').each((_, el) => {
-        const $el = $(el);
-        const href = $el.attr('href') || '';
-        const slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+    
+    const browserPage = await browser.newPage();
+    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    // Navigate and wait for search results to load
+    await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    // Wait for results to render (LK21 uses JS to load results)
+    await browserPage.waitForSelector('.gallery-grid a, #results a, .movie-list a', { timeout: 10000 }).catch(() => {});
+    
+    // Give extra time for rendering
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Extract film data from rendered page
+    const films = await browserPage.evaluate((baseUrl: string) => {
+      const results: any[] = [];
+      const seen = new Set<string>();
+      
+      // Find all movie cards in results
+      document.querySelectorAll('a').forEach((el) => {
+        const img = el.querySelector('img');
+        if (!img) return;
         
-        if (!slug || seen.has(slug) || slug.includes('/')) return;
-        
-        const title = $el.attr('title') || $el.find('img').attr('alt') || '';
-        const poster = $el.find('img').attr('src') || '';
-        
-        if (title && title.length > 2 && title.toLowerCase().includes(query.toLowerCase())) {
-          seen.add(slug);
-          films.push({
-            id: slug,
-            title: title.substring(0, 150),
-            slug,
-            poster,
-            url: href,
-          });
+        const href = el.getAttribute('href') || '';
+        if (!href || href.includes('/genre/') || href.includes('/country/') || 
+            href.includes('/page/') || href.includes('/search/') || href.includes('/year/')) {
+          return;
         }
+        
+        const title = el.getAttribute('title') || img.getAttribute('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(baseUrl, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.includes('/') || slug.length < 3) return;
+        
+        const poster = img.getAttribute('src') || img.getAttribute('data-src') || '';
+        const yearMatch = slug.match(/-(\d{4})$/);
+        
+        seen.add(slug);
+        results.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          url: href.startsWith('http') ? href : `${baseUrl}/${slug}`,
+        });
       });
-    }
-
-    const hasNext = $('.pagination .next, a.next').length > 0;
+      
+      return results;
+    }, BASE_URL);
+    
+    await browser.close();
+    browser = null;
+    
+    // Check for pagination
+    const hasNext = films.length >= 20;
+    
+    console.log(`[LK21] Search "${query}" page ${page}: Found ${films.length} films via Puppeteer`);
+    
     const result = { data: films, hasNext };
     
     if (films.length > 0) {
@@ -381,7 +414,10 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     
     return result;
   } catch (error) {
-    console.error('Error searching films:', error);
+    console.error('Error searching films with Puppeteer:', error);
+    if (browser) {
+      await browser.close();
+    }
     return { data: [], hasNext: false };
   }
 }
@@ -528,38 +564,65 @@ export async function getFilmsByGenre(genre: string, page: number = 1): Promise<
 
   try {
     const url = `${BASE_URL}/genre/${genre}${page > 1 ? `/page/${page}` : ''}`;
+    console.log(`[LK21] Fetching genre ${genre} page ${page}: ${url}`);
+    
     const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     const films: FilmItem[] = [];
     const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
 
-    $('a[href*="lk21official.cc"]').each((_, el) => {
+    // Scan links that contain images (movie cards have poster images)
+    $('a').each((_, el) => {
       const $el = $(el);
+      const $img = $el.find('img');
+      
+      // Movie links must have an image inside
+      if ($img.length === 0) return;
+      
       const href = $el.attr('href') || '';
-      const slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
       
-      if (!slug || seen.has(slug) || slug.includes('/')) return;
-      
-      const title = $el.attr('title') || $el.find('img').attr('alt') || '';
-      const poster = $el.find('img').attr('src') || '';
-      const yearMatch = slug.match(/-(\d{4})$/);
-      
-      if (title && title.length > 2) {
-        seen.add(slug);
-        films.push({
-          id: slug,
-          title: title.substring(0, 150),
-          slug,
-          poster,
-          year: yearMatch ? yearMatch[1] : '',
-          genres: [genre],
-          url: href,
-        });
+      // Skip nav/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/artist/') || href.includes('/series/') || 
+          href.includes('/page/') || href.includes('/translator/') ||
+          href.includes('/release/') || href.includes('/search/')) {
+        return;
       }
+      
+      // Get title from anchor title OR img alt (LK21 uses img alt)
+      const title = $el.attr('title') || $img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.length < 3) return;
+      if (slug.includes('/')) return;
+      
+      const poster = $img.attr('src') || $img.attr('data-src') || '';
+      const yearMatch = slug.match(yearPattern);
+      
+      seen.add(slug);
+      films.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : '',
+        genres: [genre],
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
     });
 
-    const hasNext = $('.pagination .next, a.next').length > 0 || films.length >= 10;
+    // Check for pagination
+    const paginationText = $('body').text();
+    const totalPagesMatch = paginationText.match(/dari\s+(\d+)\s+total\s+halaman/i);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1]) : 0;
+    const hasNext = totalPages > page || films.length >= 20;
+
+    console.log(`[LK21] Genre ${genre} page ${page}: Found ${films.length} films, totalPages: ${totalPages}`);
+
     const result = { data: films.slice(0, 24), hasNext };
     
     if (films.length > 0) {
