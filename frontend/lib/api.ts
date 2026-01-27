@@ -380,6 +380,48 @@ export const filmApi = {
   },
 };
 
-export default api;
+// ============ KOMIK API (Komiku.cc) ============
+export const komikApi = {
+  getLatest: async () => {
+    const res = await api.get('/komik/latest');
+    return res.data;
+  },
 
+  getList: async (page = 1) => {
+    const res = await api.get(`/komik/list?page=${page}`);
+    return res.data;
+  },
+
+  getManga: async (page = 1) => {
+    const res = await api.get(`/komik/manga?page=${page}`);
+    return res.data;
+  },
+
+  getManhwa: async (page = 1) => {
+    const res = await api.get(`/komik/manhwa?page=${page}`);
+    return res.data;
+  },
+
+  getManhua: async (page = 1) => {
+    const res = await api.get(`/komik/manhua?page=${page}`);
+    return res.data;
+  },
+
+  search: async (query: string) => {
+    const res = await api.get(`/komik/search?q=${encodeURIComponent(query)}`);
+    return res.data;
+  },
+
+  getDetail: async (slug: string) => {
+    const res = await api.get(`/komik/detail/${slug}`);
+    return res.data;
+  },
+
+  getChapter: async (slug: string) => {
+    const res = await api.get(`/komik/chapter/${slug}`);
+    return res.data;
+  },
+};
+
+export default api;
 

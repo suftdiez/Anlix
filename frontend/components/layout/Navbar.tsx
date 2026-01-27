@@ -30,6 +30,7 @@ export default function Navbar() {
     { href: '/donghua', label: 'Donghua' },
     { href: '/drama', label: 'Drama' },
     { href: '/film', label: 'Film' },
+    { href: '/komik', label: 'Komik' },
     { href: '/anime/genre', label: 'Genre Anime' },
     { href: '/donghua/genre', label: 'Genre Donghua' },
   ];
