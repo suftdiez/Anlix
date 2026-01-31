@@ -5,3 +5,5 @@ export { default as userRoutes } from './user.routes';
 export { default as dramaRoutes } from './drama.routes';
 export { default as filmRoutes } from './film.routes';
 export { default as komikRoutes } from './komik.routes';
+export { default as novelRoutes } from './novel.routes';
+

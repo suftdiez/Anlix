@@ -423,5 +423,68 @@ export const komikApi = {
   },
 };
 
+// ============ NOVEL API (MeioNovels) ============
+export const novelApi = {
+  getLatest: async (page = 1) => {
+    const res = await api.get(`/novel/latest?page=${page}`);
+    return res.data;
+  },
+
+  getPopular: async (page = 1) => {
+    const res = await api.get(`/novel/popular?page=${page}`);
+    return res.data;
+  },
+
+  getChina: async (page = 1) => {
+    const res = await api.get(`/novel/china?page=${page}`);
+    return res.data;
+  },
+
+  getJepang: async (page = 1) => {
+    const res = await api.get(`/novel/jepang?page=${page}`);
+    return res.data;
+  },
+
+  getKorea: async (page = 1) => {
+    const res = await api.get(`/novel/korea?page=${page}`);
+    return res.data;
+  },
+
+  getTamat: async (page = 1) => {
+    const res = await api.get(`/novel/tamat?page=${page}`);
+    return res.data;
+  },
+
+  getHTL: async (page = 1) => {
+    const res = await api.get(`/novel/htl?page=${page}`);
+    return res.data;
+  },
+
+  getByGenre: async (genre: string, page = 1) => {
+    const res = await api.get(`/novel/genre/${genre}?page=${page}`);
+    return res.data;
+  },
+
+  getGenres: async () => {
+    const res = await api.get('/novel/genres');
+    return res.data;
+  },
+
+  search: async (query: string, page = 1) => {
+    const res = await api.get(`/novel/search?q=${encodeURIComponent(query)}&page=${page}`);
+    return res.data;
+  },
+
+  getDetail: async (slug: string) => {
+    const res = await api.get(`/novel/detail/${slug}`);
+    return res.data;
+  },
+
+  readChapter: async (novelSlug: string, chapterSlug: string) => {
+    const res = await api.get(`/novel/read/${novelSlug}/${chapterSlug}`);
+    return res.data;
+  },
+};
+
 export default api;
 

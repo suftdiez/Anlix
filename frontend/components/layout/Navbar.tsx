@@ -31,6 +31,7 @@ export default function Navbar() {
     { href: '/drama', label: 'Drama' },
     { href: '/film', label: 'Film' },
     { href: '/komik', label: 'Komik' },
+    { href: '/novel', label: 'Novel' },
     { href: '/anime/genre', label: 'Genre Anime' },
     { href: '/donghua/genre', label: 'Genre Donghua' },
   ];
