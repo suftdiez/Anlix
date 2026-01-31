@@ -234,14 +234,14 @@ export async function getByCategory(category: string, page: number = 1): Promise
       'china': 'novel-china',
       'jepang': 'novel-jepang',
       'korea': 'novel-korea',
-      'tamat': 'list-tamat',
+      'tamat': 'tamat',
       'htl': 'htl',
     };
     
     const categoryPath = categoryMap[category.toLowerCase()] || category;
     const url = page === 1 
-      ? `${BASE_URL}/novel-list/${categoryPath}/` 
-      : `${BASE_URL}/novel-list/${categoryPath}/page/${page}/`;
+      ? `${BASE_URL}/novel-tag/${categoryPath}/` 
+      : `${BASE_URL}/novel-tag/${categoryPath}/page/${page}/`;
     
     const { data: html } = await axiosInstance.get(url);
     const $ = cheerio.load(html);
