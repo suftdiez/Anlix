@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { Bookmark, WatchHistory, Comment, User } from '../models';
+import { Bookmark, WatchHistory, ReadingHistory, Comment, User } from '../models';
 import { auth, AuthRequest } from '../middleware';
 import mongoose from 'mongoose';
 
@@ -253,6 +253,144 @@ router.delete('/history', auth, async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Clear history error:', error);
     res.status(500).json({ success: false, error: 'Failed to clear history' });
+  }
+});
+
+// ==================== READING HISTORY (NOVEL) ====================
+
+/**
+ * GET /api/user/reading-history
+ * Get user's reading history for novels
+ */
+router.get('/reading-history', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const history = await ReadingHistory.find({
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+    })
+      .sort({ readAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await ReadingHistory.countDocuments({
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+    });
+
+    res.json({
+      success: true,
+      page,
+      totalPages: Math.ceil(total / limit),
+      total,
+      data: history,
+    });
+  } catch (error) {
+    console.error('Get reading history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get reading history' });
+  }
+});
+
+/**
+ * POST /api/user/reading-history
+ * Save reading progress (upsert - updates if novel already in history)
+ */
+router.post('/reading-history', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { novelSlug, novelTitle, novelPoster, chapterSlug, chapterNumber, chapterTitle } = req.body;
+
+    if (!novelSlug || !novelTitle || !chapterSlug) {
+      res.status(400).json({ success: false, error: 'Missing required fields' });
+      return;
+    }
+
+    const history = await ReadingHistory.findOneAndUpdate(
+      {
+        userId: new mongoose.Types.ObjectId(req.user?.id),
+        novelSlug,
+      },
+      {
+        userId: new mongoose.Types.ObjectId(req.user?.id),
+        novelSlug,
+        novelTitle,
+        novelPoster: novelPoster || '',
+        chapterSlug,
+        chapterNumber: chapterNumber || '',
+        chapterTitle: chapterTitle || '',
+        readAt: new Date(),
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Reading progress saved',
+      data: history,
+    });
+  } catch (error) {
+    console.error('Save reading progress error:', error);
+    res.status(500).json({ success: false, error: 'Failed to save reading progress' });
+  }
+});
+
+/**
+ * GET /api/user/reading-history/:novelSlug
+ * Get reading progress for a specific novel
+ */
+router.get('/reading-history/:novelSlug', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { novelSlug } = req.params;
+
+    const history = await ReadingHistory.findOne({
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+      novelSlug,
+    });
+
+    res.json({
+      success: true,
+      data: history,
+      hasProgress: !!history,
+    });
+  } catch (error) {
+    console.error('Get reading progress error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get reading progress' });
+  }
+});
+
+/**
+ * DELETE /api/user/reading-history/:id
+ * Remove reading history item
+ */
+router.delete('/reading-history/:id', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    await ReadingHistory.findOneAndDelete({
+      _id: new mongoose.Types.ObjectId(id),
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+    });
+
+    res.json({ success: true, message: 'Reading history removed' });
+  } catch (error) {
+    console.error('Remove reading history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to remove reading history' });
+  }
+});
+
+/**
+ * DELETE /api/user/reading-history
+ * Clear all reading history
+ */
+router.delete('/reading-history', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    await ReadingHistory.deleteMany({
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+    });
+
+    res.json({ success: true, message: 'Reading history cleared' });
+  } catch (error) {
+    console.error('Clear reading history error:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear reading history' });
   }
 });
 

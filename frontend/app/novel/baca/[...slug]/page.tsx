@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { FiArrowLeft, FiArrowRight, FiBook, FiHome, FiSettings } from 'react-icons/fi';
-import { novelApi } from '@/lib/api';
+import { novelApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 interface ChapterContent {
   title: string;
@@ -18,6 +19,7 @@ interface ChapterContent {
 export default function NovelReaderPage() {
   const params = useParams();
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const slugParts = params.slug as string[];
   const novelSlug = slugParts[0];
   const chapterSlug = slugParts.slice(1).join('/');
@@ -34,6 +36,27 @@ export default function NovelReaderPage() {
         const response = await novelApi.readChapter(novelSlug, chapterSlug);
         if (response.success) {
           setChapter(response.data);
+          
+          // Save reading progress if authenticated
+          if (isAuthenticated) {
+            try {
+              // Get novel detail for poster and correct title
+              const novelDetail = await novelApi.getDetail(novelSlug);
+              const poster = novelDetail?.data?.poster || '';
+              const title = novelDetail?.data?.title || response.data.novelTitle;
+              
+              await userApi.saveReadingProgress({
+                novelSlug,
+                novelTitle: title,
+                novelPoster: poster,
+                chapterSlug,
+                chapterNumber: response.data.chapterNumber,
+                chapterTitle: response.data.title,
+              });
+            } catch (e) {
+              // Ignore save errors silently
+            }
+          }
         }
       } catch (error) {
         console.error('Error fetching chapter:', error);
@@ -42,7 +65,7 @@ export default function NovelReaderPage() {
       }
     };
     if (novelSlug && chapterSlug) fetchChapter();
-  }, [novelSlug, chapterSlug]);
+  }, [novelSlug, chapterSlug, isAuthenticated]);
 
   // Keyboard navigation
   useEffect(() => {

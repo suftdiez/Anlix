@@ -138,8 +138,8 @@ export const donghuaApi = {
 // ============ USER API ============
 export const userApi = {
   // Bookmarks
-  getBookmarks: async (page = 1, type?: 'anime' | 'donghua') => {
-    const params = new URLSearchParams({ page: page.toString() });
+  getBookmarks: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'novel') => {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
     if (type) params.append('type', type);
     const res = await api.get(`/user/bookmarks?${params}`);
     return res.data;
@@ -147,7 +147,7 @@ export const userApi = {
 
   addBookmark: async (data: {
     contentId: string;
-    contentType: 'anime' | 'donghua';
+    contentType: 'anime' | 'donghua' | 'novel';
     title: string;
     poster?: string;
     slug: string;
@@ -161,7 +161,7 @@ export const userApi = {
     return res.data;
   },
 
-  checkBookmark: async (contentId: string, type: 'anime' | 'donghua') => {
+  checkBookmark: async (contentId: string, type: 'anime' | 'donghua' | 'novel') => {
     const res = await api.get(`/user/bookmarks/check/${contentId}?type=${type}`);
     return res.data;
   },
@@ -194,6 +194,39 @@ export const userApi = {
 
   clearHistory: async () => {
     const res = await api.delete('/user/history');
+    return res.data;
+  },
+
+  // Reading History (Novel)
+  getReadingHistory: async (page = 1, limit = 20) => {
+    const res = await api.get(`/user/reading-history?page=${page}&limit=${limit}`);
+    return res.data;
+  },
+
+  saveReadingProgress: async (data: {
+    novelSlug: string;
+    novelTitle: string;
+    novelPoster?: string;
+    chapterSlug: string;
+    chapterNumber?: string;
+    chapterTitle?: string;
+  }) => {
+    const res = await api.post('/user/reading-history', data);
+    return res.data;
+  },
+
+  getReadingProgress: async (novelSlug: string) => {
+    const res = await api.get(`/user/reading-history/${novelSlug}`);
+    return res.data;
+  },
+
+  removeReadingHistory: async (id: string) => {
+    const res = await api.delete(`/user/reading-history/${id}`);
+    return res.data;
+  },
+
+  clearReadingHistory: async () => {
+    const res = await api.delete('/user/reading-history');
     return res.data;
   },
 

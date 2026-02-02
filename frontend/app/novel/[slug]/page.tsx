@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiBook, FiUser, FiCalendar, FiTag, FiChevronRight, FiArrowLeft, FiBookmark } from 'react-icons/fi';
+import { FiBook, FiUser, FiCalendar, FiTag, FiChevronRight, FiArrowLeft, FiBookmark, FiPlay } from 'react-icons/fi';
 import { novelApi, userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
@@ -52,6 +52,11 @@ export default function NovelDetailPage() {
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookmarkId, setBookmarkId] = useState<string | null>(null);
+  const [readingProgress, setReadingProgress] = useState<{
+    chapterSlug: string;
+    chapterNumber: string;
+    chapterTitle: string;
+  } | null>(null);
 
   useEffect(() => {
     const fetchNovel = async () => {
@@ -61,12 +66,22 @@ export default function NovelDetailPage() {
           setNovel(response.data);
         }
 
-        // Check bookmark status
+        // Check bookmark status and reading progress
         if (isAuthenticated) {
           try {
-            const bookmarkData = await userApi.checkBookmark(slug, 'novel');
+            const [bookmarkData, progressData] = await Promise.all([
+              userApi.checkBookmark(slug, 'novel'),
+              userApi.getReadingProgress(slug),
+            ]);
             setIsBookmarked(bookmarkData.isBookmarked);
             setBookmarkId(bookmarkData.bookmark?._id || null);
+            if (progressData.hasProgress) {
+              setReadingProgress({
+                chapterSlug: progressData.data.chapterSlug,
+                chapterNumber: progressData.data.chapterNumber,
+                chapterTitle: progressData.data.chapterTitle,
+              });
+            }
           } catch (e) {
             // Ignore errors
           }
@@ -236,6 +251,16 @@ export default function NovelDetailPage() {
           {/* Quick Read Buttons */}
           {novel.chapters.length > 0 && (
             <div className="flex flex-wrap gap-3">
+              {/* Continue Reading - shows if user has progress */}
+              {readingProgress && (
+                <Link
+                  href={`/novel/baca/${novel.slug}/${readingProgress.chapterSlug}`}
+                  className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 transition font-medium"
+                >
+                  <FiPlay className="w-4 h-4" />
+                  Lanjutkan ({readingProgress.chapterNumber || readingProgress.chapterTitle})
+                </Link>
+              )}
               <Link
                 href={`/novel/baca/${novel.slug}/${novel.chapters[novel.chapters.length - 1].slug}`}
                 className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition font-medium"
