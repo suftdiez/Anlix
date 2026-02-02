@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch, FiBook } from 'react-icons/fi';
+import { FiArrowLeft, FiBook, FiUser } from 'react-icons/fi';
 import { novelApi } from '@/lib/api';
 
 interface Novel {
@@ -15,8 +16,11 @@ interface Novel {
   type?: string;
 }
 
-export default function ChinaNovelPage() {
+export default function AuthorPage() {
+  const params = useParams();
+  const authorSlug = params.author as string;
   const [novels, setNovels] = useState<Novel[]>([]);
+  const [authorName, setAuthorName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
@@ -25,35 +29,45 @@ export default function ChinaNovelPage() {
     const fetchNovels = async () => {
       setIsLoading(true);
       try {
-        const response = await novelApi.getChina(page);
+        const response = await novelApi.getByAuthor(authorSlug, page);
         if (response.success) {
           setNovels(response.novels);
           setHasNext(response.hasNext);
+          setAuthorName(response.authorName || authorSlug.replace(/-/g, ' '));
         }
       } catch (error) {
-        console.error('Error fetching China novels:', error);
+        console.error('Error fetching author novels:', error);
       } finally {
         setIsLoading(false);
       }
     };
-    fetchNovels();
-  }, [page]);
+    if (authorSlug) fetchNovels();
+  }, [authorSlug, page]);
 
   return (
     <div className="container mx-auto px-4 py-6">
+      {/* Back Button */}
+      <Link href="/novel" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition">
+        <FiArrowLeft className="w-4 h-4" />
+        Kembali
+      </Link>
+
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Novel China</h1>
-        <p className="text-gray-400 mb-4">Koleksi web novel dan light novel dari China</p>
-        
-        <Link
-          href="/novel/search"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
-        >
-          <FiSearch className="w-4 h-4" />
-          Cari Novel
-        </Link>
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
+            <FiUser className="w-6 h-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-white capitalize">
+              {authorName || authorSlug.replace(/-/g, ' ')}
+            </h1>
+            <p className="text-gray-400">Author</p>
+          </div>
+        </div>
       </div>
 
+      {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
         <Link href="/novel" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           Terbaru
@@ -61,7 +75,7 @@ export default function ChinaNovelPage() {
         <Link href="/novel/popular" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           Populer
         </Link>
-        <Link href="/novel/china" className="px-4 py-2 bg-primary text-white rounded-lg font-medium">
+        <Link href="/novel/china" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           China
         </Link>
         <Link href="/novel/jepang" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
@@ -81,9 +95,17 @@ export default function ChinaNovelPage() {
         </Link>
       </div>
 
+      {/* Section Header */}
+      <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+        <FiBook className="w-5 h-5 text-primary" />
+        Novel oleh {authorName}
+        {novels.length > 0 && <span className="text-gray-400 text-base font-normal">({novels.length})</span>}
+      </h2>
+
+      {/* Novels Grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {[...Array(18)].map((_, i) => (
+          {[...Array(12)].map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-[3/4] bg-gray-800 rounded-lg mb-2" />
               <div className="h-4 bg-gray-800 rounded w-3/4" />
@@ -129,13 +151,15 @@ export default function ChinaNovelPage() {
         </div>
       )}
 
+      {/* Empty State */}
       {novels.length === 0 && !isLoading && (
         <div className="text-center py-12">
           <FiBook className="w-16 h-16 mx-auto text-gray-600 mb-4" />
-          <p className="text-gray-400">Tidak ada novel ditemukan</p>
+          <p className="text-gray-400">Tidak ada novel ditemukan untuk author ini</p>
         </div>
       )}
 
+      {/* Pagination */}
       {(hasNext || page > 1) && (
         <div className="flex justify-center gap-4 mt-8">
           <button

@@ -15,7 +15,7 @@ router.get('/bookmarks', auth, async (req: AuthRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
-    const type = req.query.type as 'anime' | 'donghua' | undefined;
+    const type = req.query.type as 'anime' | 'donghua' | 'novel' | undefined;
 
     const query: { userId: mongoose.Types.ObjectId; contentType?: string } = {
       userId: new mongoose.Types.ObjectId(req.user?.id),

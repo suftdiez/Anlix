@@ -470,6 +470,21 @@ export const novelApi = {
     return res.data;
   },
 
+  getByAuthor: async (author: string, page = 1) => {
+    const res = await api.get(`/novel/author/${author}?page=${page}`);
+    return res.data;
+  },
+
+  getTags: async () => {
+    const res = await api.get('/novel/tags');
+    return res.data;
+  },
+
+  getByTag: async (tag: string, page = 1) => {
+    const res = await api.get(`/novel/tag/${tag}?page=${page}`);
+    return res.data;
+  },
+
   search: async (query: string, page = 1) => {
     const res = await api.get(`/novel/search?q=${encodeURIComponent(query)}&page=${page}`);
     return res.data;

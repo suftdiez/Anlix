@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IBookmark extends Document {
   userId: mongoose.Types.ObjectId;
   contentId: string;
-  contentType: 'anime' | 'donghua';
+  contentType: 'anime' | 'donghua' | 'novel';
   title: string;
   poster: string;
   slug: string;
@@ -24,7 +24,7 @@ const bookmarkSchema = new Schema<IBookmark>(
     },
     contentType: {
       type: String,
-      enum: ['anime', 'donghua'],
+      enum: ['anime', 'donghua', 'novel'],
       required: true,
     },
     title: {

@@ -116,6 +116,48 @@ router.get('/genres', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/novel/author/:author - Get novels by author
+router.get('/author/:author', async (req: Request, res: Response) => {
+  try {
+    const { author } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await meionovel.getByAuthor(author, page);
+    res.json({ 
+      success: true, 
+      novels: result.data, 
+      hasNext: result.hasNext,
+      authorName: result.authorName
+    });
+  } catch (error) {
+    console.error('Error fetching novels by author:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch novels by author' });
+  }
+});
+
+// GET /api/novel/tags - Get all available tags
+router.get('/tags', async (req: Request, res: Response) => {
+  try {
+    const tags = await meionovel.getTags();
+    res.json({ success: true, data: tags });
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch tags' });
+  }
+});
+
+// GET /api/novel/tag/:tag - Get novels by tag
+router.get('/tag/:tag', async (req: Request, res: Response) => {
+  try {
+    const { tag } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await meionovel.getByTag(tag, page);
+    res.json({ success: true, novels: result.data, hasNext: result.hasNext });
+  } catch (error) {
+    console.error('Error fetching novels by tag:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch novels by tag' });
+  }
+});
+
 // GET /api/novel/search - Search novels
 router.get('/search', async (req: Request, res: Response) => {
   try {

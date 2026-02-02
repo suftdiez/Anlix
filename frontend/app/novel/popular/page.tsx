@@ -74,6 +74,12 @@ export default function PopularNovelPage() {
         <Link href="/novel/tamat" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           Tamat
         </Link>
+        <Link href="/novel/genre" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
+          Genre
+        </Link>
+        <Link href="/novel/tag" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
+          Tag
+        </Link>
       </div>
 
       <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">

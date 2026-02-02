@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiBook, FiUser, FiCalendar, FiTag, FiChevronRight, FiArrowLeft } from 'react-icons/fi';
-import { novelApi } from '@/lib/api';
+import { FiBook, FiUser, FiCalendar, FiTag, FiChevronRight, FiArrowLeft, FiBookmark } from 'react-icons/fi';
+import { novelApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import toast from 'react-hot-toast';
 
 interface Chapter {
   id: string;
@@ -31,14 +33,25 @@ interface NovelDetail {
   status?: string;
   synopsis: string;
   chapters: Chapter[];
+  related?: {
+    id: string;
+    title: string;
+    slug: string;
+    poster: string;
+    latestChapter?: string;
+    type?: string;
+  }[];
 }
 
 export default function NovelDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
+  const { isAuthenticated } = useAuth();
   const [novel, setNovel] = useState<NovelDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAllChapters, setShowAllChapters] = useState(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [bookmarkId, setBookmarkId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchNovel = async () => {
@@ -47,6 +60,17 @@ export default function NovelDetailPage() {
         if (response.success) {
           setNovel(response.data);
         }
+
+        // Check bookmark status
+        if (isAuthenticated) {
+          try {
+            const bookmarkData = await userApi.checkBookmark(slug, 'novel');
+            setIsBookmarked(bookmarkData.isBookmarked);
+            setBookmarkId(bookmarkData.bookmark?._id || null);
+          } catch (e) {
+            // Ignore errors
+          }
+        }
       } catch (error) {
         console.error('Error fetching novel detail:', error);
       } finally {
@@ -54,7 +78,36 @@ export default function NovelDetailPage() {
       }
     };
     if (slug) fetchNovel();
-  }, [slug]);
+  }, [slug, isAuthenticated]);
+
+  const handleBookmark = async () => {
+    if (!isAuthenticated) {
+      toast.error('Silakan login untuk bookmark');
+      return;
+    }
+
+    try {
+      if (isBookmarked && bookmarkId) {
+        await userApi.removeBookmark(bookmarkId);
+        setIsBookmarked(false);
+        setBookmarkId(null);
+        toast.success('Bookmark dihapus');
+      } else if (novel) {
+        const data = await userApi.addBookmark({
+          contentId: novel.slug,
+          contentType: 'novel',
+          title: novel.title,
+          poster: novel.poster,
+          slug: novel.slug,
+        });
+        setIsBookmarked(true);
+        setBookmarkId(data.data._id);
+        toast.success('Ditambahkan ke bookmark');
+      }
+    } catch (error) {
+      toast.error('Gagal mengupdate bookmark');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -123,10 +176,13 @@ export default function NovelDetailPage() {
           {/* Meta Info */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             {novel.author && (
-              <div className="flex items-center gap-2 text-gray-300">
+              <Link 
+                href={`/novel/author/${novel.author.toLowerCase().replace(/\s+/g, '-')}`}
+                className="flex items-center gap-2 text-gray-300 hover:text-primary transition"
+              >
                 <FiUser className="w-4 h-4 text-primary" />
-                <span className="text-sm">{novel.author}</span>
-              </div>
+                <span className="text-sm hover:underline">{novel.author}</span>
+              </Link>
             )}
             {novel.novelType && (
               <div className="flex items-center gap-2 text-gray-300">
@@ -179,7 +235,7 @@ export default function NovelDetailPage() {
 
           {/* Quick Read Buttons */}
           {novel.chapters.length > 0 && (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <Link
                 href={`/novel/baca/${novel.slug}/${novel.chapters[novel.chapters.length - 1].slug}`}
                 className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition font-medium"
@@ -192,6 +248,17 @@ export default function NovelDetailPage() {
               >
                 Baca Terbaru
               </Link>
+              <button
+                onClick={handleBookmark}
+                className={`flex items-center gap-2 px-6 py-2 rounded-lg font-medium transition ${
+                  isBookmarked 
+                    ? 'bg-primary/20 text-primary border border-primary' 
+                    : 'bg-gray-800 text-white hover:bg-gray-700'
+                }`}
+              >
+                <FiBookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+                {isBookmarked ? 'Tersimpan' : 'Bookmark'}
+              </button>
             </div>
           )}
         </div>
@@ -243,6 +310,52 @@ export default function NovelDetailPage() {
           </button>
         )}
       </div>
+
+      {/* Related Novels */}
+      {novel.related && novel.related.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <FiBook className="w-5 h-5 text-primary" />
+            Novel Terkait
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {novel.related.slice(0, 6).map((relatedNovel) => (
+              <Link
+                key={relatedNovel.id}
+                href={`/novel/${relatedNovel.slug}`}
+                className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              >
+                <div className="aspect-[3/4] relative overflow-hidden">
+                  <Image
+                    src={relatedNovel.poster || '/placeholder-novel.jpg'}
+                    alt={relatedNovel.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                  />
+                  {relatedNovel.type && (
+                    <span className={`absolute top-2 left-2 px-2 py-0.5 text-white text-xs font-medium rounded ${
+                      relatedNovel.type === 'HTL' ? 'bg-green-600' : 'bg-blue-600'
+                    }`}>
+                      {relatedNovel.type}
+                    </span>
+                  )}
+                  {relatedNovel.latestChapter && (
+                    <span className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent text-white text-xs">
+                      {relatedNovel.latestChapter}
+                    </span>
+                  )}
+                </div>
+                <div className="p-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
+                    {relatedNovel.title}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

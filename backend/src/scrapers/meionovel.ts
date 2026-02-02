@@ -348,6 +348,74 @@ export async function getByGenre(genre: string, page: number = 1): Promise<{ dat
 }
 
 /**
+ * Get novels by author
+ */
+export async function getByAuthor(author: string, page: number = 1): Promise<{ data: NovelItem[]; hasNext: boolean; authorName: string }> {
+  const cacheKey = `meionovel:author:${author}:${page}`;
+  const cached = await getCached<{ data: NovelItem[]; hasNext: boolean; authorName: string }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = page === 1 
+      ? `${BASE_URL}/novel-author/${author}/` 
+      : `${BASE_URL}/novel-author/${author}/page/${page}/`;
+    
+    console.log('[MeioNovel] Fetching author page:', url);
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    // Get author display name from page title or heading
+    const authorName = $('.page-header .page-title, h1.page-title, .archive-title').first().text().trim()
+      .replace(/^Author:\s*/i, '')
+      .replace(/^Novel Author:\s*/i, '') || 
+      author.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    const novels: NovelItem[] = [];
+    const seen = new Set<string>();
+
+    $('.page-item-detail, .manga').each((_, el) => {
+      const $el = $(el);
+      const linkEl = $el.find('a').first();
+      const href = linkEl.attr('href') || '';
+      
+      const title = $el.find('.post-title h3 a, .post-title a').first().text().trim() ||
+                    linkEl.attr('title') || '';
+      
+      const poster = $el.find('img').attr('src') || 
+                     $el.find('img').attr('data-src') || '';
+
+      const latestChapter = $el.find('.chapter a, .list-chapter a').first().text().trim();
+
+      if (href && title) {
+        const match = href.match(/\/novel\/([^/]+)/);
+        const slug = match ? match[1] : '';
+        
+        if (seen.has(slug) || !slug) return;
+        seen.add(slug);
+        
+        novels.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          latestChapter,
+          url: href,
+        });
+      }
+    });
+
+    console.log(`[MeioNovel] Found ${novels.length} novels by author: ${authorName}`);
+    const hasNext = $('.nav-previous a, .next').length > 0;
+    const result = { data: novels, hasNext, authorName };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('[MeioNovel] Error fetching by author:', error);
+    return { data: [], hasNext: false, authorName: author };
+  }
+}
+
+/**
  * Get novel detail by slug - uses WordPress AJAX endpoint for chapter list
  */
 export async function getDetail(slug: string): Promise<NovelDetail | null> {
@@ -813,6 +881,94 @@ export async function getDetail(slug: string): Promise<NovelDetail | null> {
       }
     }
 
+    // Extract related novels from "YOU MAY ALSO LIKE" section
+    const related: NovelItem[] = [];
+    const seenRelated = new Set<string>();
+    
+    // Correct selectors for meionovels.com related section
+    $('.related-manga-container .item').each((_, el) => {
+      const $el = $(el);
+      const linkEl = $el.find('.item-thumb a, .post-title a').first();
+      const href = linkEl.attr('href') || '';
+      
+      // Extract slug from URL
+      const slugMatch = href.match(/\/novel\/([^/]+)/);
+      if (!slugMatch) return;
+      
+      const relatedSlug = slugMatch[1];
+      if (seenRelated.has(relatedSlug) || relatedSlug === slug) return; // Skip duplicates and current novel
+      seenRelated.add(relatedSlug);
+      
+      const relatedTitle = $el.find('.post-title h5 a, .item-details .post-title a').first().text().trim() ||
+                          linkEl.attr('title') || '';
+      const relatedPoster = $el.find('.item-thumb img').attr('src') || 
+                           $el.find('.item-thumb img').attr('data-src') || '';
+      
+      if (relatedTitle) {
+        related.push({
+          id: relatedSlug,
+          title: relatedTitle,
+          slug: relatedSlug,
+          poster: relatedPoster,
+          url: href,
+        });
+      }
+    });
+
+    // If no related found with specific selectors, try to get from sidebar or bottom section
+    if (related.length === 0) {
+      $('.sidebar .c-blog__item, .c-sidebar .slider__item, .widget .page-item-detail').each((_, el) => {
+        const $el = $(el);
+        const linkEl = $el.find('a').first();
+        const href = linkEl.attr('href') || '';
+        
+        const slugMatch = href.match(/\/novel\/([^/]+)/);
+        if (!slugMatch) return;
+        
+        const relatedSlug = slugMatch[1];
+        if (seenRelated.has(relatedSlug) || relatedSlug === slug) return;
+        seenRelated.add(relatedSlug);
+        
+        const relatedTitle = $el.find('.post-title a, .name, h5').first().text().trim() ||
+                            linkEl.attr('title') || '';
+        const relatedPoster = $el.find('img').attr('src') || 
+                             $el.find('img').attr('data-src') || '';
+        
+        if (relatedTitle && related.length < 10) {
+          related.push({
+            id: relatedSlug,
+            title: relatedTitle,
+            slug: relatedSlug,
+            poster: relatedPoster,
+            url: href,
+          });
+        }
+      });
+    }
+
+    // Fallback: If still no related found, fetch novels from the same genre
+    if (related.length === 0 && genres.length > 0) {
+      try {
+        // Get first genre and fetch novels from it
+        const firstGenre = genres[0].toLowerCase().replace(/\s+/g, '-');
+        console.log(`[MeioNovel] Fetching related by genre: ${firstGenre}`);
+        const genreResult = await getByGenre(firstGenre, 1);
+        
+        if (genreResult.data && genreResult.data.length > 0) {
+          // Filter out current novel and take up to 6
+          const relatedFromGenre = genreResult.data
+            .filter((novel: NovelItem) => novel.slug !== slug)
+            .slice(0, 6);
+          
+          related.push(...relatedFromGenre);
+          console.log(`[MeioNovel] Added ${relatedFromGenre.length} related novels from genre`);
+        }
+      } catch (genreError) {
+        console.error('[MeioNovel] Failed to fetch related by genre:', genreError);
+      }
+    }
+    
+    console.log(`[MeioNovel] Found ${related.length} related novels`);
     console.log(`[MeioNovel] Found ${chapters.length} chapters for ${slug}`);
 
     const detail: NovelDetail = {
@@ -829,7 +985,7 @@ export async function getDetail(slug: string): Promise<NovelDetail | null> {
       status,
       synopsis,
       chapters,
-      related: [],
+      related,
       url,
     };
 
@@ -1057,13 +1213,124 @@ export async function getGenres(): Promise<{ name: string; slug: string; count: 
   }
 }
 
+/**
+ * Get all tags
+ */
+export async function getTags(): Promise<{ name: string; slug: string; count: number }[]> {
+  const cacheKey = 'meionovel:tags';
+  const cached = await getCached<{ name: string; slug: string; count: number }[]>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const { data: html } = await axiosInstance.get(`${BASE_URL}/novel/`);
+    const $ = cheerio.load(html);
+
+    const tags: { name: string; slug: string; count: number }[] = [];
+
+    // Try to find tag list - tags usually have different URL pattern than genres
+    $('.tags_wrap a, .widget-tags a, a[href*="novel-tag"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+      const text = $el.text().trim();
+      
+      // Skip if it's a genre link
+      if (href.includes('novel-genre')) return;
+      
+      // Extract tag name and count
+      const match = text.match(/^(.+?)\s*\((\d+)\)$/);
+      const name = match ? match[1] : text;
+      const count = match ? parseInt(match[2]) : 0;
+      
+      // Extract slug from URL
+      const slugMatch = href.match(/\/novel-tag\/([^/]+)/);
+      const slug = slugMatch ? slugMatch[1] : name.toLowerCase().replace(/\s+/g, '-');
+
+      if (name && slug && !tags.some(t => t.slug === slug)) {
+        tags.push({ name, slug, count });
+      }
+    });
+
+    console.log(`[MeioNovel] Found ${tags.length} tags`);
+    await setCache(cacheKey, tags);
+    return tags;
+  } catch (error) {
+    console.error('[MeioNovel] Error fetching tags:', error);
+    return [];
+  }
+}
+
+/**
+ * Get novels by tag
+ */
+export async function getByTag(tag: string, page: number = 1): Promise<{ data: NovelItem[]; hasNext: boolean }> {
+  const cacheKey = `meionovel:tag:${tag}:${page}`;
+  const cached = await getCached<{ data: NovelItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = page === 1 
+      ? `${BASE_URL}/novel-tag/${tag}/` 
+      : `${BASE_URL}/novel-tag/${tag}/page/${page}/`;
+    
+    console.log('[MeioNovel] Fetching tag page:', url);
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    const novels: NovelItem[] = [];
+    const seen = new Set<string>();
+
+    $('.page-item-detail, .manga').each((_, el) => {
+      const $el = $(el);
+      const linkEl = $el.find('a').first();
+      const href = linkEl.attr('href') || '';
+      
+      const title = $el.find('.post-title h3 a, .post-title a').first().text().trim() ||
+                    linkEl.attr('title') || '';
+      
+      const poster = $el.find('img').attr('src') || 
+                     $el.find('img').attr('data-src') || '';
+
+      const latestChapter = $el.find('.chapter a, .list-chapter a').first().text().trim();
+
+      if (href && title) {
+        const match = href.match(/\/novel\/([^/]+)/);
+        const slug = match ? match[1] : '';
+        
+        if (seen.has(slug) || !slug) return;
+        seen.add(slug);
+        
+        novels.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          latestChapter,
+          url: href,
+        });
+      }
+    });
+
+    console.log(`[MeioNovel] Found ${novels.length} novels for tag: ${tag}`);
+    const hasNext = $('.nav-previous a, .next').length > 0;
+    const result = { data: novels, hasNext };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('[MeioNovel] Error fetching by tag:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
 export default {
   getLatest,
   getPopular,
   getByCategory,
   getByGenre,
+  getByAuthor,
+  getByTag,
   getDetail,
   getChapter,
   search,
   getGenres,
+  getTags,
 };
