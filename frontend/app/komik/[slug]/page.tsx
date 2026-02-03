@@ -4,7 +4,10 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { komikApi } from '@/lib/api';
+import { FiBookmark, FiPlay, FiCheck } from 'react-icons/fi';
+import { komikApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import toast from 'react-hot-toast';
 
 interface Chapter {
   number: string;
@@ -26,11 +29,22 @@ interface ComicDetail {
   chapters: Chapter[];
 }
 
+interface ReadingProgress {
+  chapterSlug: string;
+  chapterNumber: string;
+  chapterTitle: string;
+}
+
 export default function KomikDetailPage() {
   const params = useParams();
   const slug = params.slug as string;
+  const { isAuthenticated } = useAuth();
+  
   const [comic, setComic] = useState<ComicDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [bookmarkId, setBookmarkId] = useState<string | null>(null);
+  const [readingProgress, setReadingProgress] = useState<ReadingProgress | null>(null);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -39,6 +53,28 @@ export default function KomikDetailPage() {
         if (response.success) {
           setComic(response.data);
         }
+        
+        // Check bookmark and reading progress status if authenticated
+        if (isAuthenticated) {
+          try {
+            const [bookmarkData, progressData] = await Promise.all([
+              userApi.checkBookmark(slug, 'komik'),
+              userApi.getReadingProgress(slug, 'komik'),
+            ]);
+            setIsBookmarked(bookmarkData.isBookmarked);
+            setBookmarkId(bookmarkData.bookmark?._id || null);
+            
+            if (progressData.hasProgress && progressData.data) {
+              setReadingProgress({
+                chapterSlug: progressData.data.chapterSlug,
+                chapterNumber: progressData.data.chapterNumber,
+                chapterTitle: progressData.data.chapterTitle,
+              });
+            }
+          } catch (e) {
+            // Ignore errors
+          }
+        }
       } catch (error) {
         console.error('Error fetching comic detail:', error);
       } finally {
@@ -46,7 +82,36 @@ export default function KomikDetailPage() {
       }
     };
     if (slug) fetchDetail();
-  }, [slug]);
+  }, [slug, isAuthenticated]);
+
+  const handleBookmark = async () => {
+    if (!isAuthenticated) {
+      toast.error('Silakan login untuk bookmark');
+      return;
+    }
+
+    try {
+      if (isBookmarked && bookmarkId) {
+        await userApi.removeBookmark(bookmarkId);
+        setIsBookmarked(false);
+        setBookmarkId(null);
+        toast.success('Bookmark dihapus');
+      } else if (comic) {
+        const data = await userApi.addBookmark({
+          contentId: comic.slug,
+          contentType: 'komik',
+          title: comic.title,
+          poster: comic.poster,
+          slug: comic.slug,
+        });
+        setIsBookmarked(true);
+        setBookmarkId(data.data._id);
+        toast.success('Ditambahkan ke bookmark');
+      }
+    } catch (error) {
+      toast.error('Gagal mengupdate bookmark');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -141,23 +206,47 @@ export default function KomikDetailPage() {
             <p className="text-gray-400 leading-relaxed">{comic.synopsis}</p>
           </div>
 
-          {/* Read Button */}
-          {comic.chapters.length > 0 && (
-            <div className="flex gap-4">
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-3">
+            {/* Continue Reading Button - if user has progress */}
+            {readingProgress && (
               <Link
-                href={`/komik/baca/${comic.chapters[comic.chapters.length - 1].slug}`}
-                className="px-6 py-3 bg-primary hover:bg-primary/80 text-white font-medium rounded-lg transition"
+                href={`/komik/baca/${readingProgress.chapterSlug}`}
+                className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition flex items-center gap-2"
               >
-                Baca Chapter Pertama
+                <FiPlay className="w-5 h-5" />
+                Lanjutkan ({readingProgress.chapterTitle || readingProgress.chapterNumber})
               </Link>
-              <Link
-                href={`/komik/baca/${comic.chapters[0].slug}`}
-                className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg transition"
-              >
-                Chapter Terbaru
-              </Link>
-            </div>
-          )}
+            )}
+            
+            {comic.chapters.length > 0 && (
+              <>
+                <Link
+                  href={`/komik/baca/${comic.chapters[comic.chapters.length - 1].slug}`}
+                  className="px-6 py-3 bg-primary hover:bg-primary/80 text-white font-medium rounded-lg transition"
+                >
+                  Baca Chapter Pertama
+                </Link>
+                <Link
+                  href={`/komik/baca/${comic.chapters[0].slug}`}
+                  className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-medium rounded-lg transition"
+                >
+                  Chapter Terbaru
+                </Link>
+              </>
+            )}
+            <button
+              onClick={handleBookmark}
+              className={`px-6 py-3 flex items-center gap-2 rounded-lg font-medium transition ${
+                isBookmarked 
+                  ? 'bg-accent/20 border border-accent text-accent' 
+                  : 'bg-gray-800 hover:bg-gray-700 text-white'
+              }`}
+            >
+              <FiBookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+              {isBookmarked ? 'Tersimpan' : 'Bookmark'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -166,18 +255,26 @@ export default function KomikDetailPage() {
         <h2 className="text-xl font-bold text-white mb-4">Daftar Chapter ({comic.chapters.length})</h2>
         <div className="bg-gray-900 rounded-lg overflow-hidden">
           <div className="max-h-[500px] overflow-y-auto">
-            {comic.chapters.map((chapter) => (
-              <Link
-                key={chapter.slug}
-                href={`/komik/baca/${chapter.slug}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-gray-800 border-b border-gray-800 last:border-b-0 transition"
-              >
-                <span className="text-white">{chapter.title}</span>
-                {chapter.updatedAt && (
-                  <span className="text-gray-500 text-sm">{chapter.updatedAt}</span>
-                )}
-              </Link>
-            ))}
+            {comic.chapters.map((chapter) => {
+              const isRead = readingProgress?.chapterSlug === chapter.slug;
+              return (
+                <Link
+                  key={chapter.slug}
+                  href={`/komik/baca/${chapter.slug}`}
+                  className={`flex items-center justify-between px-4 py-3 hover:bg-gray-800 border-b border-gray-800 last:border-b-0 transition ${
+                    isRead ? 'bg-cyan-900/30' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {isRead && <FiCheck className="w-4 h-4 text-cyan-400" />}
+                    <span className={isRead ? 'text-cyan-400' : 'text-white'}>{chapter.title}</span>
+                  </div>
+                  {chapter.updatedAt && (
+                    <span className="text-gray-500 text-sm">{chapter.updatedAt}</span>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         </div>
       </div>

@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { komikApi } from '@/lib/api';
+import { komikApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 interface ChapterData {
   title: string;
   comicSlug: string;
+  comicTitle?: string;
+  comicPoster?: string;
   chapterNumber: string;
   images: string[];
   prevChapter?: string;
@@ -18,19 +21,44 @@ interface ChapterData {
 export default function ReadChapterPage() {
   const params = useParams();
   const router = useRouter();
+  const { isAuthenticated } = useAuth();
   const chapterSlug = params.chapter as string;
   const [chapter, setChapter] = useState<ChapterData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const progressSaved = useRef(false);
+
+  // Save reading progress when chapter is loaded
+  const saveProgress = async (chapterData: ChapterData) => {
+    if (!isAuthenticated || progressSaved.current) return;
+    
+    try {
+      await userApi.saveReadingProgress({
+        contentType: 'komik',
+        contentSlug: chapterData.comicSlug,
+        contentTitle: chapterData.comicTitle || chapterData.title.split(' - ')[0] || 'Unknown',
+        contentPoster: chapterData.comicPoster || '',
+        chapterSlug: chapterSlug,
+        chapterNumber: chapterData.chapterNumber,
+        chapterTitle: chapterData.title,
+      });
+      progressSaved.current = true;
+    } catch (err) {
+      console.error('Failed to save reading progress:', err);
+    }
+  };
 
   useEffect(() => {
     const fetchChapter = async () => {
       setIsLoading(true);
       setError(null);
+      progressSaved.current = false; // Reset for new chapter
       try {
         const response = await komikApi.getChapter(chapterSlug);
         if (response.success) {
           setChapter(response.data);
+          // Save progress after loading chapter
+          saveProgress(response.data);
         } else {
           setError('Gagal memuat chapter');
         }
@@ -42,7 +70,7 @@ export default function ReadChapterPage() {
       }
     };
     if (chapterSlug) fetchChapter();
-  }, [chapterSlug]);
+  }, [chapterSlug, isAuthenticated]);
 
   if (isLoading) {
     return (

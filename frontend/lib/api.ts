@@ -138,7 +138,7 @@ export const donghuaApi = {
 // ============ USER API ============
 export const userApi = {
   // Bookmarks
-  getBookmarks: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'novel') => {
+  getBookmarks: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'novel' | 'komik') => {
     const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
     if (type) params.append('type', type);
     const res = await api.get(`/user/bookmarks?${params}`);
@@ -147,7 +147,7 @@ export const userApi = {
 
   addBookmark: async (data: {
     contentId: string;
-    contentType: 'anime' | 'donghua' | 'novel';
+    contentType: 'anime' | 'donghua' | 'novel' | 'komik';
     title: string;
     poster?: string;
     slug: string;
@@ -161,7 +161,7 @@ export const userApi = {
     return res.data;
   },
 
-  checkBookmark: async (contentId: string, type: 'anime' | 'donghua' | 'novel') => {
+  checkBookmark: async (contentId: string, type: 'anime' | 'donghua' | 'novel' | 'komik') => {
     const res = await api.get(`/user/bookmarks/check/${contentId}?type=${type}`);
     return res.data;
   },
@@ -197,26 +197,33 @@ export const userApi = {
     return res.data;
   },
 
-  // Reading History (Novel)
-  getReadingHistory: async (page = 1, limit = 20) => {
-    const res = await api.get(`/user/reading-history?page=${page}&limit=${limit}`);
+  // Reading History (Novel & Komik)
+  getReadingHistory: async (page = 1, limit = 20, type?: 'novel' | 'komik') => {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    if (type) params.append('type', type);
+    const res = await api.get(`/user/reading-history?${params}`);
     return res.data;
   },
 
   saveReadingProgress: async (data: {
-    novelSlug: string;
-    novelTitle: string;
-    novelPoster?: string;
+    contentType?: 'novel' | 'komik';
+    contentSlug: string;
+    contentTitle: string;
+    contentPoster?: string;
     chapterSlug: string;
     chapterNumber?: string;
     chapterTitle?: string;
+    // Legacy support
+    novelSlug?: string;
+    novelTitle?: string;
+    novelPoster?: string;
   }) => {
     const res = await api.post('/user/reading-history', data);
     return res.data;
   },
 
-  getReadingProgress: async (novelSlug: string) => {
-    const res = await api.get(`/user/reading-history/${novelSlug}`);
+  getReadingProgress: async (contentSlug: string, type: 'novel' | 'komik' = 'novel') => {
+    const res = await api.get(`/user/reading-history/${contentSlug}?type=${type}`);
     return res.data;
   },
 
@@ -225,8 +232,9 @@ export const userApi = {
     return res.data;
   },
 
-  clearReadingHistory: async () => {
-    const res = await api.delete('/user/reading-history');
+  clearReadingHistory: async (type?: 'novel' | 'komik') => {
+    const url = type ? `/user/reading-history?type=${type}` : '/user/reading-history';
+    const res = await api.delete(url);
     return res.data;
   },
 

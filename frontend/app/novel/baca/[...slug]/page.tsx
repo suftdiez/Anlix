@@ -46,9 +46,10 @@ export default function NovelReaderPage() {
               const title = novelDetail?.data?.title || response.data.novelTitle;
               
               await userApi.saveReadingProgress({
-                novelSlug,
-                novelTitle: title,
-                novelPoster: poster,
+                contentType: 'novel',
+                contentSlug: novelSlug,
+                contentTitle: title,
+                contentPoster: poster,
                 chapterSlug,
                 chapterNumber: response.data.chapterNumber,
                 chapterTitle: response.data.title,

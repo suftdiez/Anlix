@@ -29,10 +29,10 @@ app.use(cors({
   credentials: true,
 }));
 
-// Rate limiting
+// Rate limiting - increased for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per windowMs
+  max: process.env.NODE_ENV === 'production' ? 200 : 1000, // Higher limit for dev
   message: { error: 'Too many requests, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,

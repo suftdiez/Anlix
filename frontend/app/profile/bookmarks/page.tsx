@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiBookmark, FiTrash2, FiBook, FiFilm, FiPlayCircle } from 'react-icons/fi';
+import { FiBookmark, FiTrash2, FiBook, FiFilm, FiPlayCircle, FiImage } from 'react-icons/fi';
 import { userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
@@ -11,7 +11,7 @@ import toast from 'react-hot-toast';
 interface Bookmark {
   _id: string;
   contentId: string;
-  contentType: 'anime' | 'donghua' | 'novel';
+  contentType: 'anime' | 'donghua' | 'novel' | 'komik';
   title: string;
   poster: string;
   slug: string;
@@ -22,7 +22,7 @@ export default function BookmarksPage() {
   const { isAuthenticated } = useAuth();
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'anime' | 'donghua' | 'novel'>('all');
+  const [filter, setFilter] = useState<'all' | 'anime' | 'donghua' | 'novel' | 'komik'>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -69,6 +69,8 @@ export default function BookmarksPage() {
         return `/novel/${bookmark.slug}`;
       case 'donghua':
         return `/donghua/${bookmark.slug}`;
+      case 'komik':
+        return `/komik/${bookmark.slug}`;
       case 'anime':
       default:
         return `/anime/${bookmark.slug}`;
@@ -81,6 +83,8 @@ export default function BookmarksPage() {
         return <FiBook className="w-4 h-4" />;
       case 'donghua':
         return <FiPlayCircle className="w-4 h-4" />;
+      case 'komik':
+        return <FiImage className="w-4 h-4" />;
       case 'anime':
       default:
         return <FiFilm className="w-4 h-4" />;
@@ -93,6 +97,8 @@ export default function BookmarksPage() {
         return 'bg-purple-600';
       case 'donghua':
         return 'bg-red-600';
+      case 'komik':
+        return 'bg-green-600';
       case 'anime':
       default:
         return 'bg-blue-600';
@@ -121,13 +127,13 @@ export default function BookmarksPage() {
           Bookmark Saya
         </h1>
         <p className="text-gray-400 mt-2">
-          Koleksi anime, donghua, dan novel yang telah kamu simpan
+          Koleksi anime, donghua, komik, dan novel yang telah kamu simpan
         </p>
       </div>
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {(['all', 'anime', 'donghua', 'novel'] as const).map((type) => (
+        {(['all', 'anime', 'donghua', 'komik', 'novel'] as const).map((type) => (
           <button
             key={type}
             onClick={() => { setFilter(type); setPage(1); }}
@@ -202,12 +208,15 @@ export default function BookmarksPage() {
               ? 'Belum ada bookmark. Mulai simpan anime, donghua, atau novel favoritmu!' 
               : `Belum ada ${filter} yang di-bookmark`}
           </p>
-          <div className="flex justify-center gap-4 mt-4">
+          <div className="flex flex-wrap justify-center gap-4 mt-4">
             <Link href="/anime" className="text-primary hover:underline">
               Jelajahi Anime
             </Link>
             <Link href="/donghua" className="text-primary hover:underline">
               Jelajahi Donghua
+            </Link>
+            <Link href="/komik" className="text-primary hover:underline">
+              Jelajahi Komik
             </Link>
             <Link href="/novel" className="text-primary hover:underline">
               Jelajahi Novel

@@ -59,7 +59,9 @@ export interface Chapter {
 
 export interface ChapterImages {
   title: string;
+  comicSlug: string;
   comicTitle: string;
+  comicPoster: string;  // Added for reading history display
   chapterNumber: string;
   images: string[];
   prevChapter?: string;
@@ -535,10 +537,11 @@ export async function getChapterImages(chapterSlug: string): Promise<ChapterImag
     // Get chapter title
     const title = $('h1').first().text().trim() || chapterSlug;
     
-    // Extract comic title and chapter number
+    // Extract comic slug, title and chapter number
     const titleMatch = title.match(/(.+?)\s*[-–]\s*Chapter\s*(\d+(?:\.\d+)?)/i) ||
                        chapterSlug.match(/(.+?)-chapter-(\d+(?:\.\d+)?)/i);
     const comicTitle = titleMatch ? titleMatch[1].replace(/-/g, ' ').trim() : '';
+    const comicSlug = titleMatch ? titleMatch[1].replace(/\s+/g, '-').toLowerCase() : chapterSlug.replace(/-chapter-.*/, '');
     const chapterNumber = titleMatch ? titleMatch[2] : '';
     
     // Get chapter images
@@ -574,9 +577,25 @@ export async function getChapterImages(chapterSlug: string): Promise<ChapterImag
     const prevChapter = $('a[href*="-chapter-"]:contains("Prev"), a[rel="prev"]').first().attr('href')?.split('/').pop();
     const nextChapter = $('a[href*="-chapter-"]:contains("Next"), a[rel="next"]').first().attr('href')?.split('/').pop();
     
+    // Try to get comic poster from cached detail
+    let comicPoster = '';
+    const detailCacheKey = `komiku:detail:${comicSlug}`;
+    const cachedDetail = await getCached<ComicDetail>(detailCacheKey);
+    if (cachedDetail?.poster) {
+      comicPoster = cachedDetail.poster;
+    } else {
+      // Fallback: try to get og:image from the chapter page
+      const ogImage = $('meta[property="og:image"]').attr('content') || '';
+      if (ogImage && !ogImage.includes('logo') && !ogImage.includes('icon')) {
+        comicPoster = ogImage;
+      }
+    }
+    
     const result: ChapterImages = {
       title,
+      comicSlug,
       comicTitle,
+      comicPoster,
       chapterNumber,
       images,
       prevChapter,

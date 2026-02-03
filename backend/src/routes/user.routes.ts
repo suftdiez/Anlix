@@ -256,27 +256,32 @@ router.delete('/history', auth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ==================== READING HISTORY (NOVEL) ====================
+// ==================== READING HISTORY (NOVEL & KOMIK) ====================
 
 /**
  * GET /api/user/reading-history
- * Get user's reading history for novels
+ * Get user's reading history for novels and komik
  */
 router.get('/reading-history', auth, async (req: AuthRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+    const type = req.query.type as 'novel' | 'komik' | undefined;
 
-    const history = await ReadingHistory.find({
+    const query: { userId: mongoose.Types.ObjectId; contentType?: string } = {
       userId: new mongoose.Types.ObjectId(req.user?.id),
-    })
+    };
+    
+    if (type) {
+      query.contentType = type;
+    }
+
+    const history = await ReadingHistory.find(query)
       .sort({ readAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
-    const total = await ReadingHistory.countDocuments({
-      userId: new mongoose.Types.ObjectId(req.user?.id),
-    });
+    const total = await ReadingHistory.countDocuments(query);
 
     res.json({
       success: true,
@@ -293,13 +298,33 @@ router.get('/reading-history', auth, async (req: AuthRequest, res: Response) => 
 
 /**
  * POST /api/user/reading-history
- * Save reading progress (upsert - updates if novel already in history)
+ * Save reading progress (upsert - updates if content already in history)
+ * Supports both old (novelSlug) and new (contentSlug) field names for backward compatibility
  */
 router.post('/reading-history', auth, async (req: AuthRequest, res: Response) => {
   try {
-    const { novelSlug, novelTitle, novelPoster, chapterSlug, chapterNumber, chapterTitle } = req.body;
+    const { 
+      // New fields
+      contentType = 'novel',
+      contentSlug,
+      contentTitle,
+      contentPoster,
+      // Legacy fields for backward compatibility
+      novelSlug, 
+      novelTitle, 
+      novelPoster,
+      // Common fields
+      chapterSlug, 
+      chapterNumber, 
+      chapterTitle 
+    } = req.body;
 
-    if (!novelSlug || !novelTitle || !chapterSlug) {
+    // Support both old and new field names
+    const slug = contentSlug || novelSlug;
+    const title = contentTitle || novelTitle;
+    const poster = contentPoster || novelPoster || '';
+
+    if (!slug || !title || !chapterSlug) {
       res.status(400).json({ success: false, error: 'Missing required fields' });
       return;
     }
@@ -307,13 +332,15 @@ router.post('/reading-history', auth, async (req: AuthRequest, res: Response) =>
     const history = await ReadingHistory.findOneAndUpdate(
       {
         userId: new mongoose.Types.ObjectId(req.user?.id),
-        novelSlug,
+        contentSlug: slug,
+        contentType,
       },
       {
         userId: new mongoose.Types.ObjectId(req.user?.id),
-        novelSlug,
-        novelTitle,
-        novelPoster: novelPoster || '',
+        contentType,
+        contentSlug: slug,
+        contentTitle: title,
+        contentPoster: poster,
         chapterSlug,
         chapterNumber: chapterNumber || '',
         chapterTitle: chapterTitle || '',
@@ -328,22 +355,29 @@ router.post('/reading-history', auth, async (req: AuthRequest, res: Response) =>
       data: history,
     });
   } catch (error) {
-    console.error('Save reading progress error:', error);
-    res.status(500).json({ success: false, error: 'Failed to save reading progress' });
+    console.error('=== Save reading progress error ===');
+    console.error('Full error:', error);
+    console.error('Request body was:', JSON.stringify(req.body, null, 2));
+    console.error('User ID:', req.user?.id);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack');
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ success: false, error: 'Failed to save reading progress', details: errorMessage });
   }
 });
 
 /**
- * GET /api/user/reading-history/:novelSlug
- * Get reading progress for a specific novel
+ * GET /api/user/reading-history/:contentSlug
+ * Get reading progress for a specific content (novel or komik)
  */
-router.get('/reading-history/:novelSlug', auth, async (req: AuthRequest, res: Response) => {
+router.get('/reading-history/:contentSlug', auth, async (req: AuthRequest, res: Response) => {
   try {
-    const { novelSlug } = req.params;
+    const { contentSlug } = req.params;
+    const contentType = req.query.type as string || 'novel';
 
     const history = await ReadingHistory.findOne({
       userId: new mongoose.Types.ObjectId(req.user?.id),
-      novelSlug,
+      contentSlug,
+      contentType,
     });
 
     res.json({
@@ -383,9 +417,17 @@ router.delete('/reading-history/:id', auth, async (req: AuthRequest, res: Respon
  */
 router.delete('/reading-history', auth, async (req: AuthRequest, res: Response) => {
   try {
-    await ReadingHistory.deleteMany({
+    const type = req.query.type as 'novel' | 'komik' | undefined;
+    
+    const query: { userId: mongoose.Types.ObjectId; contentType?: string } = {
       userId: new mongoose.Types.ObjectId(req.user?.id),
-    });
+    };
+    
+    if (type) {
+      query.contentType = type;
+    }
+    
+    await ReadingHistory.deleteMany(query);
 
     res.json({ success: true, message: 'Reading history cleared' });
   } catch (error) {

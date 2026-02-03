@@ -71,7 +71,7 @@ export default function NovelDetailPage() {
           try {
             const [bookmarkData, progressData] = await Promise.all([
               userApi.checkBookmark(slug, 'novel'),
-              userApi.getReadingProgress(slug),
+              userApi.getReadingProgress(slug, 'novel'),
             ]);
             setIsBookmarked(bookmarkData.isBookmarked);
             setBookmarkId(bookmarkData.bookmark?._id || null);
@@ -258,7 +258,11 @@ export default function NovelDetailPage() {
                   className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-500 transition font-medium"
                 >
                   <FiPlay className="w-4 h-4" />
-                  Lanjutkan ({readingProgress.chapterNumber || readingProgress.chapterTitle})
+                  Lanjutkan {readingProgress.chapterNumber || readingProgress.chapterTitle || 
+                    (() => {
+                      const match = readingProgress.chapterSlug?.match(/chapter[- ]?(\d+)/i);
+                      return match ? `(Chapter ${match[1]})` : '';
+                    })()}
                 </Link>
               )}
               <Link
