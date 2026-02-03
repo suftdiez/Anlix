@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch } from 'react-icons/fi';
+import { FiSearch, FiChevronDown } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
 
 interface Comic {
@@ -13,11 +13,21 @@ interface Comic {
   poster: string;
 }
 
+type SortOption = 'update' | 'title-asc' | 'title-desc';
+
+const SORT_OPTIONS = [
+  { value: 'update', label: 'Update Terbaru' },
+  { value: 'title-asc', label: 'Judul A-Z' },
+  { value: 'title-desc', label: 'Judul Z-A' },
+] as const;
+
 export default function KomikListPage() {
   const [comics, setComics] = useState<Comic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>('update');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   useEffect(() => {
     const fetchComics = async () => {
@@ -37,6 +47,23 @@ export default function KomikListPage() {
     fetchComics();
   }, [page]);
 
+  // Sort comics based on selected option
+  const sortedComics = useMemo(() => {
+    if (sortOption === 'update') {
+      return comics; // Keep original order from API
+    }
+    
+    const sorted = [...comics];
+    if (sortOption === 'title-asc') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title, 'id'));
+    } else if (sortOption === 'title-desc') {
+      sorted.sort((a, b) => b.title.localeCompare(a.title, 'id'));
+    }
+    return sorted;
+  }, [comics, sortOption]);
+
+  const currentSortLabel = SORT_OPTIONS.find(opt => opt.value === sortOption)?.label || 'Urutkan';
+
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
@@ -44,14 +71,58 @@ export default function KomikListPage() {
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Daftar Komik</h1>
         <p className="text-gray-400 mb-4">Semua komik manga, manhwa, dan manhua</p>
         
-        {/* Search Button */}
-        <Link
-          href="/komik/search"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
-        >
-          <FiSearch className="w-4 h-4" />
-          Cari Komik
-        </Link>
+        {/* Search and Sort */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search Button */}
+          <Link
+            href="/komik/search"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Komik
+          </Link>
+          
+          {/* Sort Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+            >
+              <span className="text-gray-500">Urutkan:</span>
+              <span className="text-white">{currentSortLabel}</span>
+              <FiChevronDown className={`w-4 h-4 transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showSortMenu && (
+              <>
+                {/* Backdrop to close menu */}
+                <div 
+                  className="fixed inset-0 z-10" 
+                  onClick={() => setShowSortMenu(false)}
+                />
+                {/* Dropdown Menu */}
+                <div className="absolute top-full left-0 mt-2 w-48 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
+                  {SORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setSortOption(option.value as SortOption);
+                        setShowSortMenu(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                        sortOption === option.value
+                          ? 'bg-primary/20 text-primary'
+                          : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Navigation Tabs */}
@@ -88,7 +159,7 @@ export default function KomikListPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {comics.map((comic) => (
+          {sortedComics.map((comic) => (
             <Link
               key={comic.id}
               href={`/komik/${comic.slug}`}
@@ -134,3 +205,4 @@ export default function KomikListPage() {
     </div>
   );
 }
+
