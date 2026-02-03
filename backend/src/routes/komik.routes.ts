@@ -116,4 +116,43 @@ router.get('/chapter/:slug', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/komik/genres - Get all available genres
+router.get('/genres', async (req: Request, res: Response) => {
+  try {
+    const genres = komiku.getGenres();
+    res.json({ success: true, genres });
+  } catch (error) {
+    console.error('Error fetching genres:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch genres' });
+  }
+});
+
+// GET /api/komik/genre/:genre - Get comics by genre with pagination
+router.get('/genre/:genre', async (req: Request, res: Response) => {
+  try {
+    const { genre } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await komiku.getByGenre(genre, page);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error fetching comics by genre:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch comics by genre' });
+  }
+});
+
+// GET /api/komik/author/:author - Get comics by author with pagination
+router.get('/author/:author', async (req: Request, res: Response) => {
+  try {
+    const { author } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await komiku.getByAuthor(author, page);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error fetching comics by author:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch comics by author' });
+  }
+});
+
 export default router;
+
+

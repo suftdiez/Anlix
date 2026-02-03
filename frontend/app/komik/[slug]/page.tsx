@@ -109,7 +109,14 @@ export default function KomikDetailPage() {
           
           <div className="space-y-2 text-gray-300 mb-4">
             <p><span className="text-gray-500">Type:</span> <span className="px-2 py-0.5 bg-primary/20 text-primary rounded text-sm">{comic.type}</span></p>
-            {comic.author && <p><span className="text-gray-500">Author:</span> {comic.author}</p>}
+            {comic.author && (
+              <p>
+                <span className="text-gray-500">Author:</span>{' '}
+                <Link href={`/komik/author/${encodeURIComponent(comic.author)}`} className="text-primary hover:underline">
+                  {comic.author}
+                </Link>
+              </p>
+            )}
             {comic.released && <p><span className="text-gray-500">Released:</span> {comic.released}</p>}
           </div>
 
@@ -117,9 +124,13 @@ export default function KomikDetailPage() {
           {comic.genres.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-4">
               {comic.genres.map((genre) => (
-                <span key={genre} className="px-3 py-1 bg-gray-800 text-gray-300 text-sm rounded-full">
+                <Link
+                  key={genre}
+                  href={`/komik/genre/${encodeURIComponent(genre.toLowerCase())}`}
+                  className="px-3 py-1 bg-gray-800 hover:bg-primary/20 text-gray-300 hover:text-primary text-sm rounded-full transition"
+                >
                   {genre}
-                </span>
+                </Link>
               ))}
             </div>
           )}

@@ -650,6 +650,151 @@ export async function search(query: string): Promise<Comic[]> {
   }
 }
 
+// Predefined genres based on common manga/manhwa/manhua genres
+export const GENRES = [
+  'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy',
+  'Horror', 'Isekai', 'Martial Arts', 'Mystery', 'Psychological',
+  'Romance', 'Sci-Fi', 'Shoujo', 'Shounen', 'Slice of Life',
+  'Sports', 'Supernatural', 'Tragedy', 'Harem', 'School Life',
+  'Ecchi', 'Mecha', 'Historical', 'Military', 'Music',
+  'Demons', 'Magic', 'Vampire', 'Josei', 'Seinen'
+];
+
+/**
+ * Get all available genres
+ */
+export function getGenres(): string[] {
+  return [...GENRES].sort();
+}
+
+/**
+ * Get comics by genre (uses search to find comics with genre in title/description)
+ */
+export async function getByGenre(genre: string, page: number = 1): Promise<{ comics: Comic[]; hasNext: boolean }> {
+  const cacheKey = `komiku:genre:${genre}:${page}`;
+  const cached = await getCached<{ comics: Comic[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Use search API to find comics (genre matching will be approximate)
+    const url = `${BASE_URL}/search?q=${encodeURIComponent(genre)}${page > 1 ? `&page=${page}` : ''}`;
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    const comics: Comic[] = [];
+    const seen = new Set<string>();
+
+    $('a[href*="/komik/"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+
+      if (href.includes('-chapter-')) return;
+
+      const match = href.match(/\/komik\/([^\/]+)/);
+      const slug = match ? match[1] : '';
+
+      if (!slug || seen.has(slug)) return;
+      seen.add(slug);
+
+      const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
+      const img = $el.find('img').first();
+      const poster = img.attr('src') || img.attr('data-src') || '';
+
+      if (title || poster) {
+        comics.push({
+          id: slug,
+          title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          slug,
+          poster,
+          url: `${BASE_URL}/komik/${slug}`,
+        });
+      }
+    });
+
+    // Check for next page
+    const hasNext = $('a[href*="page="]').filter((_, el) => {
+      const href = $(el).attr('href') || '';
+      return href.includes(`page=${page + 1}`);
+    }).length > 0;
+
+    const result = { comics, hasNext };
+    
+    if (comics.length > 0) {
+      await setCache(cacheKey, result);
+    }
+
+    console.log(`[Komiku] Found ${comics.length} comics for genre "${genre}" page ${page}`);
+    return result;
+  } catch (error) {
+    console.error('[Komiku] Error fetching by genre:', error);
+    return { comics: [], hasNext: false };
+  }
+}
+
+/**
+ * Get comics by author (uses search to find comics by author name)
+ */
+export async function getByAuthor(author: string, page: number = 1): Promise<{ comics: Comic[]; hasNext: boolean }> {
+  const cacheKey = `komiku:author:${author}:${page}`;
+  const cached = await getCached<{ comics: Comic[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Use search API to find comics by author name
+    const url = `${BASE_URL}/search?q=${encodeURIComponent(author)}${page > 1 ? `&page=${page}` : ''}`;
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    const comics: Comic[] = [];
+    const seen = new Set<string>();
+
+    $('a[href*="/komik/"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+
+      if (href.includes('-chapter-')) return;
+
+      const match = href.match(/\/komik\/([^\/]+)/);
+      const slug = match ? match[1] : '';
+
+      if (!slug || seen.has(slug)) return;
+      seen.add(slug);
+
+      const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
+      const img = $el.find('img').first();
+      const poster = img.attr('src') || img.attr('data-src') || '';
+
+      if (title || poster) {
+        comics.push({
+          id: slug,
+          title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          slug,
+          poster,
+          url: `${BASE_URL}/komik/${slug}`,
+        });
+      }
+    });
+
+    // Check for next page
+    const hasNext = $('a[href*="page="]').filter((_, el) => {
+      const href = $(el).attr('href') || '';
+      return href.includes(`page=${page + 1}`);
+    }).length > 0;
+
+    const result = { comics, hasNext };
+    
+    if (comics.length > 0) {
+      await setCache(cacheKey, result);
+    }
+
+    console.log(`[Komiku] Found ${comics.length} comics for author "${author}" page ${page}`);
+    return result;
+  } catch (error) {
+    console.error('[Komiku] Error fetching by author:', error);
+    return { comics: [], hasNext: false };
+  }
+}
+
 export default {
   getLatest,
   getList,
@@ -657,4 +802,9 @@ export default {
   getDetail,
   getChapterImages,
   search,
+  getGenres,
+  getByGenre,
+  getByAuthor,
+  GENRES,
 };
+

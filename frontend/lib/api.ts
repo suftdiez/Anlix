@@ -454,6 +454,21 @@ export const komikApi = {
     const res = await api.get(`/komik/chapter/${slug}`);
     return res.data;
   },
+
+  getGenres: async () => {
+    const res = await api.get('/komik/genres');
+    return res.data;
+  },
+
+  getByGenre: async (genre: string, page = 1) => {
+    const res = await api.get(`/komik/genre/${genre}?page=${page}`);
+    return res.data;
+  },
+
+  getByAuthor: async (author: string, page = 1) => {
+    const res = await api.get(`/komik/author/${encodeURIComponent(author)}?page=${page}`);
+    return res.data;
+  },
 };
 
 // ============ NOVEL API (MeioNovels) ============

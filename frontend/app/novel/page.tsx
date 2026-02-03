@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch, FiBook } from 'react-icons/fi';
+import { FiSearch, FiBook, FiFilter } from 'react-icons/fi';
 import { novelApi } from '@/lib/api';
 
 interface Novel {
@@ -16,17 +16,27 @@ interface Novel {
   updatedAt?: string;
 }
 
+type SortOption = 'latest' | 'popular' | 'name-asc' | 'name-desc';
+
 export default function NovelPage() {
   const [novels, setNovels] = useState<Novel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('latest');
 
   useEffect(() => {
     const fetchNovels = async () => {
       setIsLoading(true);
       try {
-        const response = await novelApi.getLatest(page);
+        // Fetch from different endpoint based on sort option
+        let response;
+        if (sortBy === 'popular') {
+          response = await novelApi.getPopular(page);
+        } else {
+          response = await novelApi.getLatest(page);
+        }
+        
         if (response.success) {
           setNovels(response.novels);
           setHasNext(response.hasNext);
@@ -38,7 +48,23 @@ export default function NovelPage() {
       }
     };
     fetchNovels();
-  }, [page]);
+  }, [page, sortBy]);
+
+  // Sort novels based on selected option (for name sorting only, API handles latest/popular)
+  const sortedNovels = useMemo(() => {
+    const sorted = [...novels];
+    switch (sortBy) {
+      case 'name-asc':
+        return sorted.sort((a, b) => a.title.localeCompare(b.title));
+      case 'name-desc':
+        return sorted.sort((a, b) => b.title.localeCompare(a.title));
+      case 'latest':
+      case 'popular':
+      default:
+        return sorted; // Keep original order from API
+    }
+  }, [novels, sortBy]);
+
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -89,12 +115,31 @@ export default function NovelPage() {
         </Link>
       </div>
 
-
-      {/* Section Header */}
-      <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-        <FiBook className="w-5 h-5 text-primary" />
-        Novel Terbaru
-      </h2>
+      {/* Section Header with Sort */}
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+          <FiBook className="w-5 h-5 text-primary" />
+          {sortBy === 'popular' ? 'Novel Populer' : 'Novel Terbaru'}
+        </h2>
+        
+        {/* Sort Dropdown */}
+        <div className="flex items-center gap-2">
+          <FiFilter className="w-4 h-4 text-gray-400" />
+          <select
+            value={sortBy}
+            onChange={(e) => {
+              setSortBy(e.target.value as SortOption);
+              setPage(1); // Reset to page 1 when sort changes
+            }}
+            className="bg-gray-800 text-white text-sm rounded-lg px-3 py-2 border border-white/10 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+          >
+            <option value="latest">Update Terbaru</option>
+            <option value="popular">Popularitas</option>
+            <option value="name-asc">Nama (A-Z)</option>
+            <option value="name-desc">Nama (Z-A)</option>
+          </select>
+        </div>
+      </div>
 
       {/* Novels Grid */}
       {isLoading ? (
@@ -108,7 +153,7 @@ export default function NovelPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {novels.map((novel) => (
+          {sortedNovels.map((novel) => (
             <Link
               key={novel.id}
               href={`/novel/${novel.slug}`}

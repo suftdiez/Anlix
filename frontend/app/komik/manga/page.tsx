@@ -70,6 +70,9 @@ export default function MangaPage() {
         <Link href="/komik/manhua" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           Manhua
         </Link>
+        <Link href="/komik/genre" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
+          Genre
+        </Link>
       </div>
 
       {/* Comics Grid */}
