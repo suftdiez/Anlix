@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { komikApi, userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { FiColumns, FiList, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 
 interface ChapterData {
   title: string;
@@ -18,6 +19,10 @@ interface ChapterData {
   nextChapter?: string;
 }
 
+type ReadingMode = 'vertical' | 'horizontal';
+
+const READING_MODE_KEY = 'komik-reading-mode';
+
 export default function ReadChapterPage() {
   const params = useParams();
   const router = useRouter();
@@ -27,6 +32,42 @@ export default function ReadChapterPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const progressSaved = useRef(false);
+  
+  // Reading mode state
+  const [readingMode, setReadingMode] = useState<ReadingMode>('vertical');
+  const [currentPage, setCurrentPage] = useState(0);
+
+  // Load reading mode from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(READING_MODE_KEY);
+    if (saved === 'horizontal' || saved === 'vertical') {
+      setReadingMode(saved);
+    }
+  }, []);
+
+  // Save reading mode to localStorage
+  const toggleReadingMode = useCallback(() => {
+    const newMode = readingMode === 'vertical' ? 'horizontal' : 'vertical';
+    setReadingMode(newMode);
+    setCurrentPage(0);
+    localStorage.setItem(READING_MODE_KEY, newMode);
+  }, [readingMode]);
+
+  // Keyboard navigation for horizontal mode
+  useEffect(() => {
+    if (readingMode !== 'horizontal' || !chapter) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        setCurrentPage(p => Math.max(0, p - 1));
+      } else if (e.key === 'ArrowRight') {
+        setCurrentPage(p => Math.min(chapter.images.length - 1, p + 1));
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [readingMode, chapter]);
 
   // Save reading progress when chapter is loaded
   const saveProgress = async (chapterData: ChapterData) => {
@@ -53,6 +94,7 @@ export default function ReadChapterPage() {
       setIsLoading(true);
       setError(null);
       progressSaved.current = false; // Reset for new chapter
+      setCurrentPage(0); // Reset page for new chapter
       try {
         const response = await komikApi.getChapter(chapterSlug);
         if (response.success) {
@@ -115,17 +157,37 @@ export default function ReadChapterPage() {
               </Link>
             )}
 
-            {/* Title */}
-            <h1 className="text-white font-medium text-sm sm:text-base truncate max-w-xs sm:max-w-md">
-              {chapter.title}
-            </h1>
+            {/* Title + Page Indicator */}
+            <div className="text-center flex-1 mx-4">
+              <h1 className="text-white font-medium text-sm sm:text-base truncate">
+                {chapter.title}
+              </h1>
+              {readingMode === 'horizontal' && chapter.images.length > 0 && (
+                <p className="text-gray-400 text-xs">
+                  Halaman {currentPage + 1} / {chapter.images.length}
+                </p>
+              )}
+            </div>
 
-            {/* Navigation */}
+            {/* Controls */}
             <div className="flex items-center gap-2">
+              {/* Reading Mode Toggle */}
+              <button
+                onClick={toggleReadingMode}
+                className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition"
+                title={readingMode === 'vertical' ? 'Ganti ke mode horizontal' : 'Ganti ke mode vertikal'}
+              >
+                {readingMode === 'vertical' ? (
+                  <FiColumns className="w-5 h-5" />
+                ) : (
+                  <FiList className="w-5 h-5" />
+                )}
+              </button>
+              
               {chapter.prevChapter && (
                 <Link
                   href={`/komik/baca/${chapter.prevChapter}`}
-                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition"
+                  className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white text-sm rounded transition hidden sm:block"
                 >
                   Prev
                 </Link>
@@ -133,7 +195,7 @@ export default function ReadChapterPage() {
               {chapter.nextChapter && (
                 <Link
                   href={`/komik/baca/${chapter.nextChapter}`}
-                  className="px-3 py-1.5 bg-primary hover:bg-primary/80 text-white text-sm rounded transition"
+                  className="px-3 py-1.5 bg-primary hover:bg-primary/80 text-white text-sm rounded transition hidden sm:block"
                 >
                   Next
                 </Link>
@@ -144,24 +206,66 @@ export default function ReadChapterPage() {
       </div>
 
       {/* Images */}
-      <div className="max-w-4xl mx-auto py-4">
+      <div className={readingMode === 'horizontal' ? 'h-[calc(100vh-120px)] flex items-center justify-center' : 'max-w-4xl mx-auto py-4'}>
         {chapter.images.length > 0 ? (
-          <div className="space-y-0">
-            {chapter.images.map((img, idx) => (
-              <div key={idx} className="relative w-full">
+          readingMode === 'vertical' ? (
+            // Vertical Mode - Scroll through all images
+            <div className="space-y-0">
+              {chapter.images.map((img, idx) => (
+                <div key={idx} className="relative w-full">
+                  <Image
+                    src={img}
+                    alt={`Page ${idx + 1}`}
+                    width={800}
+                    height={1200}
+                    className="w-full h-auto"
+                    priority={idx < 3}
+                    loading={idx < 3 ? 'eager' : 'lazy'}
+                    unoptimized
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Horizontal Mode - One page at a time
+            <div className="relative w-full h-full flex items-center justify-center px-4">
+              {/* Previous Page Button */}
+              <button
+                onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="absolute left-2 sm:left-8 z-10 p-3 bg-gray-800/80 hover:bg-gray-700 text-white rounded-full disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                <FiChevronLeft className="w-6 h-6" />
+              </button>
+
+              {/* Current Page */}
+              <div className="relative max-h-full max-w-full">
                 <Image
-                  src={img}
-                  alt={`Page ${idx + 1}`}
+                  src={chapter.images[currentPage]}
+                  alt={`Page ${currentPage + 1}`}
                   width={800}
                   height={1200}
-                  className="w-full h-auto"
-                  priority={idx < 3}
-                  loading={idx < 3 ? 'eager' : 'lazy'}
+                  className="max-h-[calc(100vh-140px)] w-auto object-contain mx-auto"
+                  priority
                   unoptimized
                 />
               </div>
-            ))}
-          </div>
+
+              {/* Next Page Button */}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(chapter.images.length - 1, p + 1))}
+                disabled={currentPage === chapter.images.length - 1}
+                className="absolute right-2 sm:right-8 z-10 p-3 bg-gray-800/80 hover:bg-gray-700 text-white rounded-full disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                <FiChevronRight className="w-6 h-6" />
+              </button>
+
+              {/* Keyboard hint */}
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-gray-500 text-xs hidden sm:block">
+                Gunakan tombol ← → untuk navigasi
+              </div>
+            </div>
+          )
         ) : (
           <div className="text-center py-20">
             <p className="text-gray-400">Tidak ada gambar ditemukan</p>
@@ -184,14 +288,31 @@ export default function ReadChapterPage() {
               <div />
             )}
             
-            {chapter.comicSlug && (
-              <Link
-                href={`/komik/${chapter.comicSlug}`}
-                className="px-4 py-2 text-gray-400 hover:text-white transition"
-              >
-                Daftar Chapter
-              </Link>
-            )}
+            <div className="flex items-center gap-4">
+              {chapter.comicSlug && (
+                <Link
+                  href={`/komik/${chapter.comicSlug}`}
+                  className="px-4 py-2 text-gray-400 hover:text-white transition"
+                >
+                  Daftar Chapter
+                </Link>
+              )}
+              
+              {/* Page selector for horizontal mode */}
+              {readingMode === 'horizontal' && chapter.images.length > 0 && (
+                <select
+                  value={currentPage}
+                  onChange={(e) => setCurrentPage(Number(e.target.value))}
+                  className="px-3 py-2 bg-gray-800 text-white rounded-lg border border-gray-700"
+                >
+                  {chapter.images.map((_, idx) => (
+                    <option key={idx} value={idx}>
+                      Halaman {idx + 1}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
 
             {chapter.nextChapter ? (
               <Link
@@ -209,3 +330,4 @@ export default function ReadChapterPage() {
     </div>
   );
 }
+

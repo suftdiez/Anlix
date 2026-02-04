@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch, FiBook, FiUser, FiArrowLeft } from 'react-icons/fi';
+import { FiSearch, FiBook, FiUser, FiArrowLeft, FiLoader } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
 
 interface Comic {
@@ -23,14 +23,19 @@ export default function KomikAuthorPage() {
   
   const [comics, setComics] = useState<Comic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // Initial fetch
   useEffect(() => {
     const fetchComics = async () => {
       setIsLoading(true);
+      setComics([]);
+      setPage(1);
       try {
-        const response = await komikApi.getByAuthor(authorName, page);
+        const response = await komikApi.getByAuthor(authorName, 1);
         if (response.success) {
           setComics(response.comics || []);
           setHasNext(response.hasNext || false);
@@ -42,7 +47,44 @@ export default function KomikAuthorPage() {
       }
     };
     if (authorSlug) fetchComics();
-  }, [authorSlug, authorName, page]);
+  }, [authorSlug, authorName]);
+
+  // Fetch more comics
+  const fetchMore = useCallback(async () => {
+    if (isLoadingMore || !hasNext) return;
+    setIsLoadingMore(true);
+    const nextPage = page + 1;
+    try {
+      const response = await komikApi.getByAuthor(authorName, nextPage);
+      if (response.success) {
+        setComics(prev => [...prev, ...(response.comics || [])]);
+        setHasNext(response.hasNext || false);
+        setPage(nextPage);
+      }
+    } catch (error) {
+      console.error('Error fetching more comics:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [authorName, page, hasNext, isLoadingMore]);
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNext && !isLoadingMore && !isLoading) {
+          fetchMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [fetchMore, hasNext, isLoadingMore, isLoading]);
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -113,46 +155,61 @@ export default function KomikAuthorPage() {
           ))}
         </div>
       ) : comics.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {comics.map((comic) => (
-            <Link
-              key={comic.id}
-              href={`/komik/${comic.slug}`}
-              className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-            >
-              {/* Poster */}
-              <div className="aspect-[3/4] relative overflow-hidden">
-                <Image
-                  src={comic.poster || '/placeholder-komik.jpg'}
-                  alt={comic.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                />
-                {/* Type Badge */}
-                {comic.type && (
-                  <span className={`absolute top-2 left-2 px-2 py-0.5 text-white text-xs font-medium rounded ${
-                    comic.type === 'Manga' ? 'bg-red-600' : comic.type === 'Manhwa' ? 'bg-blue-600' : 'bg-green-600'
-                  }`}>
-                    {comic.type}
-                  </span>
-                )}
-                {/* Latest Chapter Badge */}
-                {comic.latestChapter && (
-                  <span className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent text-white text-xs">
-                    {comic.latestChapter}
-                  </span>
-                )}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {comics.map((comic) => (
+              <Link
+                key={comic.id}
+                href={`/komik/${comic.slug}`}
+                className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              >
+                {/* Poster */}
+                <div className="aspect-[3/4] relative overflow-hidden">
+                  <Image
+                    src={comic.poster || '/placeholder-komik.jpg'}
+                    alt={comic.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                  />
+                  {/* Type Badge */}
+                  {comic.type && (
+                    <span className={`absolute top-2 left-2 px-2 py-0.5 text-white text-xs font-medium rounded ${
+                      comic.type === 'Manga' ? 'bg-red-600' : comic.type === 'Manhwa' ? 'bg-blue-600' : 'bg-green-600'
+                    }`}>
+                      {comic.type}
+                    </span>
+                  )}
+                  {/* Latest Chapter Badge */}
+                  {comic.latestChapter && (
+                    <span className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/80 to-transparent text-white text-xs">
+                      {comic.latestChapter}
+                    </span>
+                  )}
+                </div>
+                {/* Title */}
+                <div className="p-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
+                    {comic.title}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Infinite Scroll Sentinel & Loading */}
+          <div ref={sentinelRef} className="mt-8 flex justify-center">
+            {isLoadingMore && (
+              <div className="flex items-center gap-2 text-gray-400">
+                <FiLoader className="w-5 h-5 animate-spin" />
+                <span>Memuat lebih banyak...</span>
               </div>
-              {/* Title */}
-              <div className="p-2">
-                <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
-                  {comic.title}
-                </h3>
-              </div>
-            </Link>
-          ))}
-        </div>
+            )}
+            {!hasNext && !isLoadingMore && (
+              <p className="text-gray-500">Semua komik telah ditampilkan</p>
+            )}
+          </div>
+        </>
       ) : (
         <div className="text-center py-12">
           <FiBook className="w-16 h-16 mx-auto text-gray-600 mb-4" />
@@ -160,27 +217,6 @@ export default function KomikAuthorPage() {
           <Link href="/komik" className="text-primary hover:underline mt-2 inline-block">
             Kembali ke daftar komik
           </Link>
-        </div>
-      )}
-
-      {/* Pagination */}
-      {(hasNext || page > 1) && (
-        <div className="flex justify-center gap-4 mt-8">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-6 py-2 bg-gray-800 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-700 transition"
-          >
-            Sebelumnya
-          </button>
-          <span className="px-4 py-2 text-white">Halaman {page}</span>
-          <button
-            onClick={() => setPage(p => p + 1)}
-            disabled={!hasNext}
-            className="px-6 py-2 bg-primary text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/80 transition"
-          >
-            Selanjutnya
-          </button>
         </div>
       )}
     </div>

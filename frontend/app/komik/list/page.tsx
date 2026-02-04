@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch, FiChevronDown } from 'react-icons/fi';
+import { FiSearch, FiChevronDown, FiLoader } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 interface Comic {
   id: string;
@@ -22,30 +23,22 @@ const SORT_OPTIONS = [
 ] as const;
 
 export default function KomikListPage() {
-  const [comics, setComics] = useState<Comic[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('update');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
-  useEffect(() => {
-    const fetchComics = async () => {
-      setIsLoading(true);
-      try {
-        const response = await komikApi.getList(page);
-        if (response.success) {
-          setComics(response.comics);
-          setHasNext(response.hasNext);
-        }
-      } catch (error) {
-        console.error('Error fetching comics:', error);
-      } finally {
-        setIsLoading(false);
-      }
+  // Fetch function for infinite scroll
+  const fetchComics = useCallback(async (page: number) => {
+    const response = await komikApi.getList(page);
+    return {
+      success: response.success,
+      items: response.comics as Comic[],
+      hasNext: response.hasNext
     };
-    fetchComics();
-  }, [page]);
+  }, []);
+
+  const { items: comics, isLoading, isLoadingMore, hasNext, sentinelRef } = useInfiniteScroll<Comic>({
+    fetchFn: fetchComics
+  });
 
   // Sort comics based on selected option
   const sortedComics = useMemo(() => {
@@ -158,51 +151,46 @@ export default function KomikListPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {sortedComics.map((comic) => (
-            <Link
-              key={comic.id}
-              href={`/komik/${comic.slug}`}
-              className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-            >
-              <div className="aspect-[3/4] relative overflow-hidden">
-                <Image
-                  src={comic.poster || '/placeholder-comic.jpg'}
-                  alt={comic.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                />
-              </div>
-              <div className="p-2">
-                <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
-                  {comic.title}
-                </h3>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {sortedComics.map((comic) => (
+              <Link
+                key={comic.id}
+                href={`/komik/${comic.slug}`}
+                className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              >
+                <div className="aspect-[3/4] relative overflow-hidden">
+                  <Image
+                    src={comic.poster || '/placeholder-comic.jpg'}
+                    alt={comic.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                  />
+                </div>
+                <div className="p-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
+                    {comic.title}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
 
-      {/* Pagination */}
-      <div className="flex justify-center gap-4 mt-8">
-        <button
-          onClick={() => setPage(p => Math.max(1, p - 1))}
-          disabled={page === 1}
-          className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          Sebelumnya
-        </button>
-        <span className="px-4 py-2 text-white">Halaman {page}</span>
-        <button
-          onClick={() => setPage(p => p + 1)}
-          disabled={!hasNext}
-          className="px-6 py-2 bg-primary hover:bg-primary/80 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          Selanjutnya
-        </button>
-      </div>
+          {/* Infinite Scroll Sentinel */}
+          <div ref={sentinelRef} className="py-8 flex justify-center">
+            {isLoadingMore && (
+              <div className="flex items-center gap-2 text-gray-400">
+                <FiLoader className="w-5 h-5 animate-spin" />
+                <span>Memuat lebih banyak...</span>
+              </div>
+            )}
+            {!hasNext && comics.length > 0 && (
+              <p className="text-gray-500 text-sm">Sudah menampilkan semua komik</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
-

@@ -82,6 +82,24 @@ router.get('/search', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/komik/random - Get a random comic
+router.get('/random', async (req: Request, res: Response) => {
+  try {
+    // Get list of comics and pick random
+    const result = await komiku.getList(Math.floor(Math.random() * 10) + 1);
+    if (result.comics.length > 0) {
+      const randomIndex = Math.floor(Math.random() * result.comics.length);
+      const randomComic = result.comics[randomIndex];
+      res.json({ success: true, data: randomComic });
+    } else {
+      res.status(404).json({ success: false, error: 'No comics found' });
+    }
+  } catch (error) {
+    console.error('Error getting random komik:', error);
+    res.status(500).json({ success: false, error: 'Failed to get random comic' });
+  }
+});
+
 // GET /api/komik/detail/:slug - Get comic detail with chapters
 router.get('/detail/:slug', async (req: Request, res: Response) => {
   try {

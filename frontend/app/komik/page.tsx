@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch } from 'react-icons/fi';
+import { useRouter } from 'next/navigation';
+import { FiSearch, FiShuffle, FiX, FiBook, FiUser, FiCalendar } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
+import ContinueReading from '@/components/komik/ContinueReading';
 
 interface Comic {
   id: string;
@@ -15,9 +17,26 @@ interface Comic {
   updatedAt?: string;
 }
 
+interface ComicPreview {
+  title: string;
+  slug: string;
+  poster: string;
+  type?: string;
+  author?: string;
+  synopsis?: string;
+  genres?: string[];
+}
+
 export default function KomikPage() {
+  const router = useRouter();
   const [comics, setComics] = useState<Comic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRandomLoading, setIsRandomLoading] = useState(false);
+  
+  // Preview Modal State
+  const [previewComic, setPreviewComic] = useState<ComicPreview | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
 
   useEffect(() => {
     const fetchComics = async () => {
@@ -35,6 +54,52 @@ export default function KomikPage() {
     fetchComics();
   }, []);
 
+  // Handle Random Komik
+  const handleRandomKomik = async () => {
+    setIsRandomLoading(true);
+    try {
+      const response = await komikApi.getRandom();
+      if (response.success && response.data) {
+        router.push(`/komik/${response.data.slug}`);
+      }
+    } catch (error) {
+      console.error('Error getting random komik:', error);
+    } finally {
+      setIsRandomLoading(false);
+    }
+  };
+
+  // Handle Quick Preview on hover
+  const handlePreview = useCallback(async (comic: Comic) => {
+    setShowPreview(true);
+    setIsPreviewLoading(true);
+    setPreviewComic({ title: comic.title, slug: comic.slug, poster: comic.poster });
+    
+    try {
+      const response = await komikApi.getDetail(comic.slug);
+      if (response.success && response.data) {
+        setPreviewComic({
+          title: response.data.title,
+          slug: response.data.slug,
+          poster: response.data.poster,
+          type: response.data.type,
+          author: response.data.author,
+          synopsis: response.data.synopsis,
+          genres: response.data.genres,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching preview:', error);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, []);
+
+  const closePreview = () => {
+    setShowPreview(false);
+    setPreviewComic(null);
+  };
+
   return (
     <div className="container mx-auto px-4 py-6">
       {/* Header */}
@@ -46,14 +111,27 @@ export default function KomikPage() {
           Koleksi manga, manhwa, dan manhua terbaru dengan terjemahan Indonesia
         </p>
         
-        {/* Search Button */}
-        <Link
-          href="/komik/search"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
-        >
-          <FiSearch className="w-4 h-4" />
-          Cari Komik
-        </Link>
+        {/* Action Buttons */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search Button */}
+          <Link
+            href="/komik/search"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Komik
+          </Link>
+          
+          {/* Random Button */}
+          <button
+            onClick={handleRandomKomik}
+            disabled={isRandomLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-lg transition-all disabled:opacity-50"
+          >
+            <FiShuffle className={`w-4 h-4 ${isRandomLoading ? 'animate-spin' : ''}`} />
+            {isRandomLoading ? 'Loading...' : 'Random Komik'}
+          </button>
+        </div>
       </div>
 
       {/* Navigation Tabs */}
@@ -78,6 +156,9 @@ export default function KomikPage() {
         </Link>
       </div>
 
+      {/* Continue Reading Widget */}
+      <ContinueReading />
+
       {/* Section Header */}
       <h2 className="text-xl font-semibold text-white mb-4">Update Terbaru</h2>
 
@@ -94,10 +175,14 @@ export default function KomikPage() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {comics.map((comic) => (
-            <Link
+            <div
               key={comic.id}
-              href={`/komik/${comic.slug}`}
-              className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all cursor-pointer"
+              onClick={() => router.push(`/komik/${comic.slug}`)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                handlePreview(comic);
+              }}
             >
               {/* Poster */}
               <div className="aspect-[3/4] relative overflow-hidden">
@@ -120,6 +205,12 @@ export default function KomikPage() {
                     {comic.latestChapter}
                   </span>
                 )}
+                {/* Quick Preview Hint */}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-white text-xs bg-black/50 px-2 py-1 rounded">
+                    Klik kanan untuk preview
+                  </span>
+                </div>
               </div>
               {/* Title */}
               <div className="p-2">
@@ -127,7 +218,7 @@ export default function KomikPage() {
                   {comic.title}
                 </h3>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
@@ -137,6 +228,99 @@ export default function KomikPage() {
           <p className="text-gray-400">Tidak ada komik ditemukan</p>
         </div>
       )}
+
+      {/* Quick Preview Modal */}
+      {showPreview && previewComic && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={closePreview}>
+          <div 
+            className="bg-gray-900 border border-white/10 rounded-xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start gap-4 p-4">
+              <div className="w-24 h-32 relative flex-shrink-0 rounded-lg overflow-hidden">
+                <Image
+                  src={previewComic.poster || '/placeholder-comic.jpg'}
+                  alt={previewComic.title}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-lg font-bold text-white line-clamp-2 mb-2">
+                  {previewComic.title}
+                </h3>
+                {isPreviewLoading ? (
+                  <div className="space-y-2">
+                    <div className="h-4 bg-gray-700 rounded animate-pulse w-1/3" />
+                    <div className="h-4 bg-gray-700 rounded animate-pulse w-1/2" />
+                  </div>
+                ) : (
+                  <>
+                    {previewComic.type && (
+                      <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                        <FiBook className="w-4 h-4" />
+                        <span>{previewComic.type}</span>
+                      </div>
+                    )}
+                    {previewComic.author && (
+                      <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                        <FiUser className="w-4 h-4" />
+                        <span>{previewComic.author}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <button
+                onClick={closePreview}
+                className="p-1 text-gray-400 hover:text-white transition"
+              >
+                <FiX className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Genres */}
+            {!isPreviewLoading && previewComic.genres && previewComic.genres.length > 0 && (
+              <div className="px-4 pb-2">
+                <div className="flex flex-wrap gap-1">
+                  {previewComic.genres.slice(0, 5).map((genre) => (
+                    <span key={genre} className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded">
+                      {genre}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Synopsis */}
+            {!isPreviewLoading && previewComic.synopsis && (
+              <div className="px-4 pb-4">
+                <p className="text-sm text-gray-300 line-clamp-4">
+                  {previewComic.synopsis}
+                </p>
+              </div>
+            )}
+            
+            {/* Actions */}
+            <div className="border-t border-white/10 p-4 flex gap-3">
+              <Link
+                href={`/komik/${previewComic.slug}`}
+                className="flex-1 py-2 bg-primary hover:bg-primary/80 text-white text-center rounded-lg transition"
+              >
+                Lihat Detail
+              </Link>
+              <button
+                onClick={closePreview}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

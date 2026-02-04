@@ -477,6 +477,11 @@ export const komikApi = {
     const res = await api.get(`/komik/author/${encodeURIComponent(author)}?page=${page}`);
     return res.data;
   },
+
+  getRandom: async () => {
+    const res = await api.get('/komik/random');
+    return res.data;
+  },
 };
 
 // ============ NOVEL API (MeioNovels) ============

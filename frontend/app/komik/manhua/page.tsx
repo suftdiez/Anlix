@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiSearch } from 'react-icons/fi';
+import { FiSearch, FiChevronDown, FiLoader } from 'react-icons/fi';
 import { komikApi } from '@/lib/api';
+import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 
 interface Comic {
   id: string;
@@ -13,29 +14,43 @@ interface Comic {
   poster: string;
 }
 
-export default function ManhuaPage() {
-  const [comics, setComics] = useState<Comic[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasNext, setHasNext] = useState(false);
+type SortOption = 'update' | 'title-asc' | 'title-desc';
 
-  useEffect(() => {
-    const fetchComics = async () => {
-      setIsLoading(true);
-      try {
-        const response = await komikApi.getManhua(page);
-        if (response.success) {
-          setComics(response.comics);
-          setHasNext(response.hasNext);
-        }
-      } catch (error) {
-        console.error('Error fetching manhua:', error);
-      } finally {
-        setIsLoading(false);
-      }
+const SORT_OPTIONS = [
+  { value: 'update', label: 'Update Terbaru' },
+  { value: 'title-asc', label: 'Judul A-Z' },
+  { value: 'title-desc', label: 'Judul Z-A' },
+] as const;
+
+export default function ManhuaPage() {
+  const [sortOption, setSortOption] = useState<SortOption>('update');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+
+  const fetchComics = useCallback(async (page: number) => {
+    const response = await komikApi.getManhua(page);
+    return {
+      success: response.success,
+      items: response.comics as Comic[],
+      hasNext: response.hasNext
     };
-    fetchComics();
-  }, [page]);
+  }, []);
+
+  const { items: comics, isLoading, isLoadingMore, hasNext, sentinelRef } = useInfiniteScroll<Comic>({
+    fetchFn: fetchComics
+  });
+
+  const sortedComics = useMemo(() => {
+    if (sortOption === 'update') return comics;
+    const sorted = [...comics];
+    if (sortOption === 'title-asc') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title, 'id'));
+    } else if (sortOption === 'title-desc') {
+      sorted.sort((a, b) => b.title.localeCompare(a.title, 'id'));
+    }
+    return sorted;
+  }, [comics, sortOption]);
+
+  const currentSortLabel = SORT_OPTIONS.find(opt => opt.value === sortOption)?.label || 'Urutkan';
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -43,17 +58,52 @@ export default function ManhuaPage() {
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">Manhua</h1>
         <p className="text-gray-400 mb-4">Koleksi manhua China dengan terjemahan Indonesia</p>
         
-        {/* Search Button */}
-        <Link
-          href="/komik/search"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
-        >
-          <FiSearch className="w-4 h-4" />
-          Cari Komik
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/komik/search"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Komik
+          </Link>
+          
+          <div className="relative">
+            <button
+              onClick={() => setShowSortMenu(!showSortMenu)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+            >
+              <span className="text-gray-500">Urutkan:</span>
+              <span className="text-white">{currentSortLabel}</span>
+              <FiChevronDown className={`w-4 h-4 transition-transform ${showSortMenu ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showSortMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowSortMenu(false)} />
+                <div className="absolute top-full left-0 mt-2 w-48 bg-gray-900 border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
+                  {SORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => {
+                        setSortOption(option.value as SortOption);
+                        setShowSortMenu(false);
+                      }}
+                      className={`w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                        sortOption === option.value
+                          ? 'bg-primary/20 text-primary'
+                          : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 mb-6">
         <Link href="/komik" className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg transition">
           Update
@@ -75,7 +125,6 @@ export default function ManhuaPage() {
         </Link>
       </div>
 
-      {/* Comics Grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
           {[...Array(24)].map((_, i) => (
@@ -86,50 +135,45 @@ export default function ManhuaPage() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {comics.map((comic) => (
-            <Link
-              key={comic.id}
-              href={`/komik/${comic.slug}`}
-              className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
-            >
-              <div className="aspect-[3/4] relative overflow-hidden">
-                <Image
-                  src={comic.poster || '/placeholder-comic.jpg'}
-                  alt={comic.title}
-                  fill
-                  className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                />
-              </div>
-              <div className="p-2">
-                <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
-                  {comic.title}
-                </h3>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {sortedComics.map((comic) => (
+              <Link
+                key={comic.id}
+                href={`/komik/${comic.slug}`}
+                className="group relative bg-gray-900 rounded-lg overflow-hidden hover:ring-2 hover:ring-primary transition-all"
+              >
+                <div className="aspect-[3/4] relative overflow-hidden">
+                  <Image
+                    src={comic.poster || '/placeholder-comic.jpg'}
+                    alt={comic.title}
+                    fill
+                    className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                  />
+                </div>
+                <div className="p-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition">
+                    {comic.title}
+                  </h3>
+                </div>
+              </Link>
+            ))}
+          </div>
 
-      {/* Pagination */}
-      <div className="flex justify-center gap-4 mt-8">
-        <button
-          onClick={() => setPage(p => Math.max(1, p - 1))}
-          disabled={page === 1}
-          className="px-6 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          Sebelumnya
-        </button>
-        <span className="px-4 py-2 text-white">Halaman {page}</span>
-        <button
-          onClick={() => setPage(p => p + 1)}
-          disabled={!hasNext}
-          className="px-6 py-2 bg-primary hover:bg-primary/80 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition"
-        >
-          Selanjutnya
-        </button>
-      </div>
+          <div ref={sentinelRef} className="py-8 flex justify-center">
+            {isLoadingMore && (
+              <div className="flex items-center gap-2 text-gray-400">
+                <FiLoader className="w-5 h-5 animate-spin" />
+                <span>Memuat lebih banyak...</span>
+              </div>
+            )}
+            {!hasNext && comics.length > 0 && (
+              <p className="text-gray-500 text-sm">Sudah menampilkan semua manhua</p>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
