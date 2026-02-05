@@ -46,6 +46,45 @@ router.get('/ongoing', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/donghua/completed
+ * Get completed donghua
+ */
+router.get('/completed', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await anichin.getCompletedDonghua(page);
+    
+    res.json({
+      success: true,
+      page,
+      hasNext: result.hasNext,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Error fetching completed donghua:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch donghua' });
+  }
+});
+
+/**
+ * GET /api/donghua/schedule
+ * Get donghua release schedule by day
+ */
+router.get('/schedule', async (req: Request, res: Response) => {
+  try {
+    const result = await anichin.getSchedule();
+    
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch schedule' });
+  }
+});
+
+/**
  * GET /api/donghua/popular
  * Get popular donghua
  */

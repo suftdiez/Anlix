@@ -133,6 +133,18 @@ export const donghuaApi = {
     const res = await api.get(`/donghua/episode/${slug}`);
     return res.data;
   },
+
+  getByStatus: async (status: string, page = 1) => {
+    // Route to appropriate endpoint based on status
+    const endpoint = status === 'ongoing' ? 'ongoing' : 'completed';
+    const res = await api.get(`/donghua/${endpoint}?page=${page}`);
+    return res.data;
+  },
+
+  getSchedule: async () => {
+    const res = await api.get('/donghua/schedule');
+    return res.data;
+  },
 };
 
 // ============ USER API ============

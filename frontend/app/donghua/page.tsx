@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
+import Link from 'next/link';
+import { FiSearch, FiGrid, FiPlay, FiCheckCircle, FiShuffle, FiCalendar } from 'react-icons/fi';
+import { AnimeCard, Pagination, CardGridSkeleton, HeroCarousel, HeroSkeleton } from '@/components';
 import { donghuaApi } from '@/lib/api';
 import ContinueWatching from '@/components/shared/ContinueWatching';
 
@@ -20,9 +22,11 @@ const STORAGE_KEY = 'anlix_donghua_seen';
 
 export default function DonghuaPage() {
   const [allDonghua, setAllDonghua] = useState<DonghuaItem[]>([]);
+  const [heroItems, setHeroItems] = useState<(DonghuaItem & { contentType: 'donghua' })[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [heroLoading, setHeroLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Get seen slugs from sessionStorage
@@ -50,6 +54,28 @@ export default function DonghuaPage() {
   const clearSeenSlugs = useCallback(() => {
     if (typeof window === 'undefined') return;
     sessionStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  // Fetch hero items (ongoing donghua for featured carousel)
+  useEffect(() => {
+    const fetchHero = async () => {
+      try {
+        // Try ongoing donghua for hero carousel
+        const heroData = await donghuaApi.getOngoing(1);
+        const items = heroData.data || [];
+        
+        const heroes = items.slice(0, 5).map((item: DonghuaItem) => ({
+          ...item,
+          contentType: 'donghua' as const,
+        }));
+        setHeroItems(heroes);
+      } catch (err) {
+        console.error('Failed to fetch hero donghua:', err);
+      } finally {
+        setHeroLoading(false);
+      }
+    };
+    fetchHero();
   }, []);
 
   useEffect(() => {
@@ -111,15 +137,69 @@ export default function DonghuaPage() {
   const displayItems = allDonghua.slice(startIdx, startIdx + itemsPerPage);
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
-          Daftar <span className="gradient-text">Donghua</span>
+    <div className="min-h-screen">
+      {/* Hero Carousel */}
+      {heroLoading ? (
+        <HeroSkeleton />
+      ) : heroItems.length > 0 ? (
+        <HeroCarousel items={heroItems} />
+      ) : null}
+
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
+            Daftar <span className="gradient-text">Donghua</span>
         </h1>
-        <p className="text-gray-400">
+        <p className="text-gray-400 mb-4">
           Koleksi donghua (anime China) subtitle Indonesia terlengkap
         </p>
+        
+        {/* Quick Filter Buttons */}
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/donghua/search"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Donghua
+          </Link>
+          <Link
+            href="/donghua/genre"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiGrid className="w-4 h-4" />
+            Lihat Genre
+          </Link>
+          <Link
+            href="/donghua/status/ongoing"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-green-500/30 rounded-lg text-green-400 hover:text-green-300 hover:border-green-500/50 transition-all"
+          >
+            <FiPlay className="w-4 h-4" />
+            Ongoing
+          </Link>
+          <Link
+            href="/donghua/status/completed"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-blue-500/30 rounded-lg text-blue-400 hover:text-blue-300 hover:border-blue-500/50 transition-all"
+          >
+            <FiCheckCircle className="w-4 h-4" />
+            Completed
+          </Link>
+          <Link
+            href="/donghua/random"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-purple-500/30 rounded-lg text-purple-400 hover:text-purple-300 hover:border-purple-500/50 transition-all"
+          >
+            <FiShuffle className="w-4 h-4" />
+            Random
+          </Link>
+          <Link
+            href="/donghua/jadwal"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-yellow-500/30 rounded-lg text-yellow-400 hover:text-yellow-300 hover:border-yellow-500/50 transition-all"
+          >
+            <FiCalendar className="w-4 h-4" />
+            Jadwal Rilis
+          </Link>
+        </div>
       </div>
 
       {/* Continue Watching Section */}
@@ -162,6 +242,7 @@ export default function DonghuaPage() {
           />
         </>
       )}
+      </div>
     </div>
   );
 }

@@ -4,10 +4,11 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FiChevronLeft, FiChevronRight, FiHome, FiList, FiMessageCircle } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiHome, FiList } from 'react-icons/fi';
 import { donghuaApi, userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
+import CommentsSection from '@/components/shared/CommentsSection';
 
 interface StreamServer {
   name: string;
@@ -285,16 +286,13 @@ export default function DonghuaEpisodePage() {
         )}
       </div>
 
-      {/* Comments Section Placeholder */}
-      <div className="mt-8 p-6 bg-dark-card rounded-xl border border-white/5">
-        <h3 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
-          <FiMessageCircle className="w-5 h-5 text-accent" />
-          Komentar
-        </h3>
-        <p className="text-gray-500 text-center py-8">
-          Login untuk menambahkan komentar
-        </p>
-      </div>
+      {/* Comments Section */}
+      <CommentsSection
+        contentId={slug}
+        contentType="donghua"
+        episodeId={episode}
+        episodeTitle={data.episodeNumber ? `Episode ${data.episodeNumber}` : undefined}
+      />
     </div>
   );
 }

@@ -91,6 +91,19 @@ export interface StreamServer {
   quality?: string;
 }
 
+export interface ScheduleItem {
+  title: string;
+  slug: string;
+  poster?: string;
+  time?: string; // Release time like "08:57"
+  episode?: string;
+  url: string;
+}
+
+export interface Schedule {
+  [day: string]: ScheduleItem[];
+}
+
 // Helper to get cached data (Redis with in-memory fallback)
 async function getCached<T>(key: string): Promise<T | null> {
   // Try Redis first
@@ -279,6 +292,70 @@ export async function getOngoingDonghua(page: number = 1): Promise<{ data: Dongh
     return result;
   } catch (error) {
     console.error('Error fetching ongoing donghua:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get completed donghua
+ */
+export async function getCompletedDonghua(page: number = 1): Promise<{ data: DonghuaItem[]; hasNext: boolean }> {
+  const cacheKey = `anichin:completed:${page}`;
+  const cached = await getCached<{ data: DonghuaItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/donghua/?status=completed&page=${page}`;
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    const donghuaList: DonghuaItem[] = [];
+    const seen = new Set<string>();
+
+    $('.listupd .bs, .bsx, article.bs').each((_, el) => {
+      const $el = $(el);
+      const linkEl = $el.find('a').first();
+      const href = linkEl.attr('href') || '';
+      
+      let title = $el.find('.tt h2').text().trim() ||
+                  $el.find('.tt').text().trim() ||
+                  $el.find('.title').text().trim() ||
+                  linkEl.attr('title') || '';
+      
+      const poster = $el.find('img').attr('src') || 
+                     $el.find('img').attr('data-src') || '';
+      const rating = $el.find('.rating i').text().trim();
+
+      if (href && title) {
+        let slug = '';
+        if (href.includes('/donghua/')) {
+          const match = href.match(/\/donghua\/([^/]+)/);
+          slug = match ? match[1] : '';
+        } else {
+          slug = href.split('/').filter(Boolean).pop() || '';
+        }
+        
+        if (seen.has(slug) || !slug) return;
+        seen.add(slug);
+        
+        donghuaList.push({
+          id: slug,
+          title: title.substring(0, 100),
+          slug: slug,
+          poster: poster,
+          status: 'Completed',
+          rating: rating,
+          url: `${BASE_URL}/donghua/${slug}/`,
+        });
+      }
+    });
+
+    const hasNext = $('.hpage .r, .pagination .next, a.next').length > 0;
+    const result = { data: donghuaList, hasNext };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('Error fetching completed donghua:', error);
     return { data: [], hasNext: false };
   }
 }
@@ -668,12 +745,153 @@ export async function getPopularDonghua(): Promise<DonghuaItem[]> {
   }
 }
 
+/**
+ * Get donghua release schedule by day
+ */
+export async function getSchedule(): Promise<Schedule> {
+  const cacheKey = 'anichin:schedule';
+  const cached = await getCached<Schedule>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/schedule/`;
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const schedule: Schedule = {
+      monday: [],
+      tuesday: [],
+      wednesday: [],
+      thursday: [],
+      friday: [],
+      saturday: [],
+      sunday: [],
+    };
+
+    // Day mapping
+    const dayMap: Record<string, keyof typeof schedule> = {
+      'monday': 'monday',
+      'tuesday': 'tuesday',
+      'wednesday': 'wednesday',
+      'thursday': 'thursday',
+      'friday': 'friday',
+      'saturday': 'saturday',
+      'sunday': 'sunday',
+    };
+
+    // Each day is in a section with class .schedulepage or similar structure
+    // The schedule page has h3 headers with day names followed by donghua items
+    let currentDay: keyof typeof schedule | null = null;
+
+    // Parse schedule sections - look for day headers
+    $('h3, .bsx').each((_, el) => {
+      const $el = $(el);
+      const tagName = el.tagName?.toLowerCase();
+
+      if (tagName === 'h3') {
+        // This is a day header
+        const dayText = $el.text().trim().toLowerCase();
+        for (const [key, value] of Object.entries(dayMap)) {
+          if (dayText.includes(key)) {
+            currentDay = value;
+            break;
+          }
+        }
+      } else if (currentDay && $el.hasClass('bsx')) {
+        // This is a donghua item under current day
+        const linkEl = $el.find('a').first();
+        const href = linkEl.attr('href') || '';
+        const title = $el.find('.tt').text().trim() || linkEl.attr('title') || '';
+        const poster = $el.find('img').attr('src') || $el.find('img').attr('data-src') || '';
+        const timeText = $el.find('.epx').text().trim() || '';
+
+        if (href && title) {
+          const match = href.match(/\/donghua\/([^/]+)/);
+          const slug = match ? match[1] : href.split('/').filter(Boolean).pop() || '';
+
+          // Extract time (format: "at 08:57" or similar)
+          const timeMatch = timeText.match(/(\d{1,2}:\d{2})/);
+          const time = timeMatch ? timeMatch[1] : undefined;
+
+          // Extract episode number from the text
+          const epMatch = timeText.match(/(\d+)$/);
+          const episode = epMatch ? `Episode ${epMatch[1]}` : undefined;
+
+          schedule[currentDay].push({
+            title: title.substring(0, 100),
+            slug,
+            poster,
+            time,
+            episode,
+            url: `${BASE_URL}/donghua/${slug}/`,
+          });
+        }
+      }
+    });
+
+    // Alternative parsing: look for list items within schedule sections
+    $('.schedule-item, .listupd .bs, .schedulepage .bsx').each((_, el) => {
+      const $el = $(el);
+      const $parent = $el.closest('.schedule-day, [data-day]');
+      const dayAttr = $parent.attr('data-day') || '';
+      
+      let day: keyof typeof schedule | null = null;
+      for (const [key, value] of Object.entries(dayMap)) {
+        if (dayAttr.toLowerCase().includes(key)) {
+          day = value;
+          break;
+        }
+      }
+
+      if (day) {
+        const linkEl = $el.find('a').first();
+        const href = linkEl.attr('href') || '';
+        const title = $el.find('.tt').text().trim() || linkEl.attr('title') || '';
+        const poster = $el.find('img').attr('src') || '';
+        const time = $el.find('.time, .epx').first().text().trim().match(/(\d{1,2}:\d{2})/)?.[1];
+
+        if (href && title) {
+          const match = href.match(/\/donghua\/([^/]+)/);
+          const slug = match ? match[1] : '';
+          
+          // Avoid duplicates
+          if (slug && !schedule[day].some(item => item.slug === slug)) {
+            schedule[day].push({
+              title: title.substring(0, 100),
+              slug,
+              poster,
+              time,
+              url: `${BASE_URL}/donghua/${slug}/`,
+            });
+          }
+        }
+      }
+    });
+
+    await setCache(cacheKey, schedule);
+    return schedule;
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    return {
+      monday: [],
+      tuesday: [],
+      wednesday: [],
+      thursday: [],
+      friday: [],
+      saturday: [],
+      sunday: [],
+    };
+  }
+}
+
 export default {
   getLatestDonghua,
   getOngoingDonghua,
+  getCompletedDonghua,
   searchDonghua,
   getDonghuaDetail,
   getEpisodeDetail,
   getDonghuaByGenre,
   getPopularDonghua,
+  getSchedule,
 };
