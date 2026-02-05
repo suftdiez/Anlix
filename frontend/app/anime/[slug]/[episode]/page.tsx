@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { FiChevronLeft, FiChevronRight, FiHome, FiList, FiMessageCircle, FiRefreshCw } from 'react-icons/fi';
@@ -31,6 +31,7 @@ interface EpisodeDetail {
 
 export default function EpisodePage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.slug as string;
   const episode = params.episode as string;
   const { isAuthenticated } = useAuth();
@@ -40,6 +41,10 @@ export default function EpisodePage() {
   const [currentStreamUrl, setCurrentStreamUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingServer, setIsLoadingServer] = useState(false);
+
+  // Refs for tracking progress
+  const progressRef = useRef(10);
+  const episodeDataRef = useRef<{ title: string; episodeNumber: number; poster: string } | null>(null);
 
   // Fetch stream URL for AJAX-based servers
   const fetchServerStream = useCallback(async (server: StreamServer) => {
@@ -70,12 +75,27 @@ export default function EpisodePage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const result = await animeApi.getEpisode(episode);
-        setData(result.data);
+        // Fetch episode and detail in parallel
+        const [episodeResult, detailResult] = await Promise.all([
+          animeApi.getEpisode(episode),
+          animeApi.getDetail(slug).catch(() => ({ data: null })), // Get poster from detail
+        ]);
+        
+        setData(episodeResult.data);
+        const poster = detailResult.data?.poster || '';
+
+        // Store for progress updates
+        if (episodeResult.data) {
+          episodeDataRef.current = {
+            title: episodeResult.data.animeTitle,
+            episodeNumber: parseInt(episodeResult.data.episodeNumber) || 1,
+            poster,
+          };
+        }
 
         // Set initial stream URL
-        if (result.data?.servers?.length > 0) {
-          const firstServer = result.data.servers[0];
+        if (episodeResult.data?.servers?.length > 0) {
+          const firstServer = episodeResult.data.servers[0];
           if (firstServer.url) {
             setCurrentStreamUrl(firstServer.url);
           } else if (firstServer.post && firstServer.nume) {
@@ -84,18 +104,19 @@ export default function EpisodePage() {
           }
         }
 
-        // Save to history
-        if (isAuthenticated && result.data) {
+        // Save to history with poster (mark as started)
+        if (isAuthenticated && episodeResult.data) {
           try {
             await userApi.addHistory({
               contentId: slug,
               contentType: 'anime',
               episodeId: episode,
-              episodeNumber: parseInt(result.data.episodeNumber) || 1,
-              title: result.data.animeTitle,
-              episodeTitle: result.data.title,
+              episodeNumber: parseInt(episodeResult.data.episodeNumber) || 1,
+              title: episodeResult.data.animeTitle,
+              episodeTitle: episodeResult.data.title,
+              poster: poster,
               slug: slug,
-              progress: 0,
+              progress: 10, // Mark as started
             });
           } catch (e) {
             // Ignore errors
@@ -111,6 +132,63 @@ export default function EpisodePage() {
 
     fetchData();
   }, [episode, slug, isAuthenticated, fetchServerStream]);
+
+  // Time-based progress tracking (since iframes don't allow video event access)
+  useEffect(() => {
+    if (!isAuthenticated || !data || !episodeDataRef.current) return;
+
+    // Update progress every 2 minutes
+    const progressInterval = setInterval(async () => {
+      // Increase progress by ~15% every 2 minutes (up to 80%)
+      if (progressRef.current < 80) {
+        progressRef.current = Math.min(80, progressRef.current + 15);
+        
+        try {
+          await userApi.addHistory({
+            contentId: slug,
+            contentType: 'anime',
+            episodeId: episode,
+            episodeNumber: episodeDataRef.current?.episodeNumber || 1,
+            title: episodeDataRef.current?.title || '',
+            episodeTitle: data.title,
+            poster: episodeDataRef.current?.poster || '',
+            slug: slug,
+            progress: progressRef.current,
+          });
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    }, 2 * 60 * 1000); // 2 minutes
+
+    return () => clearInterval(progressInterval);
+  }, [isAuthenticated, data, slug, episode]);
+
+  // Handle navigation to next episode - mark current as mostly complete
+  const handleNextEpisode = async () => {
+    if (!data?.nextEpisode) return;
+
+    // Mark current episode as 90% complete before navigating
+    if (isAuthenticated && episodeDataRef.current) {
+      try {
+        await userApi.addHistory({
+          contentId: slug,
+          contentType: 'anime',
+          episodeId: episode,
+          episodeNumber: episodeDataRef.current.episodeNumber,
+          title: episodeDataRef.current.title,
+          episodeTitle: data.title,
+          poster: episodeDataRef.current.poster,
+          slug: slug,
+          progress: 90,
+        });
+      } catch (e) {
+        // Ignore errors, still navigate
+      }
+    }
+
+    router.push(`/anime/${slug}/${data.nextEpisode}`);
+  };
 
   // Handle server selection
   const handleServerChange = async (index: number) => {
@@ -266,14 +344,14 @@ export default function EpisodePage() {
         </Link>
 
         {data.nextEpisode ? (
-          <Link
-            href={`/anime/${slug}/${data.nextEpisode}`}
+          <button
+            onClick={handleNextEpisode}
             className="flex items-center gap-2 text-gray-300 hover:text-white transition-colors"
           >
             <span className="hidden sm:inline">Episode Selanjutnya</span>
             <span className="sm:hidden">Next</span>
             <FiChevronRight className="w-5 h-5" />
-          </Link>
+          </button>
         ) : (
           <div />
         )}

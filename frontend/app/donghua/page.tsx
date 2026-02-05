@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
 import { donghuaApi } from '@/lib/api';
+import ContinueWatching from '@/components/shared/ContinueWatching';
 
 interface DonghuaItem {
   id: string;
@@ -120,6 +121,9 @@ export default function DonghuaPage() {
           Koleksi donghua (anime China) subtitle Indonesia terlengkap
         </p>
       </div>
+
+      {/* Continue Watching Section */}
+      <ContinueWatching contentType="donghua" />
 
       {/* Error Message */}
       {error && (

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
 import { animeApi } from '@/lib/api';
+import ContinueWatching from '@/components/shared/ContinueWatching';
 
 interface AnimeItem {
   id: string;
@@ -120,6 +121,9 @@ export default function AnimePage() {
           Koleksi anime subtitle Indonesia terlengkap dengan update terbaru
         </p>
       </div>
+
+      {/* Continue Watching Section */}
+      <ContinueWatching contentType="anime" />
 
       {/* Error Message */}
       {error && (

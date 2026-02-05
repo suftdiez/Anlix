@@ -28,7 +28,7 @@ const watchHistorySchema = new Schema<IWatchHistory>(
     },
     contentType: {
       type: String,
-      enum: ['anime', 'donghua'],
+      enum: ['anime', 'donghua', 'film'],
       required: true,
     },
     episodeId: {

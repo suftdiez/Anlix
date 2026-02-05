@@ -2,9 +2,13 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { FiSearch, FiGrid } from 'react-icons/fi';
+import { FiSearch, FiGrid, FiCalendar, FiStar, FiGlobe } from 'react-icons/fi';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
 import { filmApi } from '@/lib/api';
+import ContinueWatching from '@/components/shared/ContinueWatching';
+import FeaturedSeries from '@/components/film/FeaturedSeries';
+import SeriesUpdate from '@/components/film/SeriesUpdate';
+import PopularFilms from '@/components/film/PopularFilms';
 
 interface FilmItem {
   id: string;
@@ -147,8 +151,48 @@ export default function FilmPage() {
             <FiGrid className="w-4 h-4" />
             Lihat Genre
           </Link>
+          <Link
+            href="/film/year"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiCalendar className="w-4 h-4" />
+            Berdasarkan Tahun
+          </Link>
+          <Link
+            href="/film/toprated"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-yellow-500/30 rounded-lg text-yellow-500 hover:text-yellow-400 hover:border-yellow-500/50 transition-all"
+          >
+            <FiStar className="w-4 h-4" />
+            Top Rating
+          </Link>
+          <Link
+            href="/film/country"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-blue-500/30 rounded-lg text-blue-400 hover:text-blue-300 hover:border-blue-500/50 transition-all"
+          >
+            <FiGlobe className="w-4 h-4" />
+            Berdasarkan Negara
+          </Link>
+          <Link
+            href="/film/upcoming"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-orange-500/30 rounded-lg text-orange-400 hover:text-orange-300 hover:border-orange-500/50 transition-all"
+          >
+            <FiCalendar className="w-4 h-4" />
+            Coming Soon
+          </Link>
         </div>
       </div>
+
+      {/* Continue Watching Section */}
+      <ContinueWatching contentType="film" />
+
+      {/* Featured Series Section */}
+      <FeaturedSeries />
+
+      {/* Series Update Section */}
+      <SeriesUpdate />
+
+      {/* Popular Films Section */}
+      <PopularFilms />
 
       {/* Error Message */}
       {error && (

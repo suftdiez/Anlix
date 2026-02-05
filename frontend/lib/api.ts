@@ -138,7 +138,7 @@ export const donghuaApi = {
 // ============ USER API ============
 export const userApi = {
   // Bookmarks
-  getBookmarks: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'novel' | 'komik') => {
+  getBookmarks: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'novel' | 'komik' | 'film') => {
     const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
     if (type) params.append('type', type);
     const res = await api.get(`/user/bookmarks?${params}`);
@@ -147,7 +147,7 @@ export const userApi = {
 
   addBookmark: async (data: {
     contentId: string;
-    contentType: 'anime' | 'donghua' | 'novel' | 'komik';
+    contentType: 'anime' | 'donghua' | 'novel' | 'komik' | 'film';
     title: string;
     poster?: string;
     slug: string;
@@ -161,20 +161,23 @@ export const userApi = {
     return res.data;
   },
 
-  checkBookmark: async (contentId: string, type: 'anime' | 'donghua' | 'novel' | 'komik') => {
+  checkBookmark: async (contentId: string, type: 'anime' | 'donghua' | 'novel' | 'komik' | 'film') => {
     const res = await api.get(`/user/bookmarks/check/${contentId}?type=${type}`);
     return res.data;
   },
 
   // History
-  getHistory: async (page = 1) => {
-    const res = await api.get(`/user/history?page=${page}`);
+  getHistory: async (page = 1, limit = 20, type?: 'anime' | 'donghua' | 'film', incomplete = false) => {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    if (type) params.append('type', type);
+    if (incomplete) params.append('incomplete', 'true');
+    const res = await api.get(`/user/history?${params}`);
     return res.data;
   },
 
   addHistory: async (data: {
     contentId: string;
-    contentType: 'anime' | 'donghua';
+    contentType: 'anime' | 'donghua' | 'film';
     episodeId: string;
     episodeNumber: number;
     title: string;
@@ -264,6 +267,37 @@ export const userApi = {
 
   deleteComment: async (id: string) => {
     const res = await api.delete(`/user/comments/${id}`);
+    return res.data;
+  },
+
+  // Reviews
+  getReviews: async (contentId: string, page = 1, limit = 10) => {
+    const res = await api.get(`/user/reviews/${contentId}?page=${page}&limit=${limit}`);
+    return res.data;
+  },
+
+  getUserReview: async (contentId: string) => {
+    const res = await api.get(`/user/reviews/${contentId}/user`);
+    return res.data;
+  },
+
+  addReview: async (data: {
+    contentId: string;
+    contentType?: 'film';
+    rating: number;
+    content: string;
+  }) => {
+    const res = await api.post('/user/reviews', data);
+    return res.data;
+  },
+
+  likeReview: async (id: string) => {
+    const res = await api.put(`/user/reviews/${id}/like`);
+    return res.data;
+  },
+
+  deleteReview: async (id: string) => {
+    const res = await api.delete(`/user/reviews/${id}`);
     return res.data;
   },
 };
@@ -409,7 +443,32 @@ export const filmApi = {
     return res.data;
   },
 
+  getByYear: async (year: number, page = 1) => {
+    const res = await api.get(`/film/year/${year}?page=${page}`);
+    return res.data;
+  },
+
+  getTopRated: async (page = 1) => {
+    const res = await api.get(`/film/toprated?page=${page}`);
+    return res.data;
+  },
+
   // Series methods
+  getFeaturedSeries: async (page = 1) => {
+    const res = await api.get(`/film/series/featured?page=${page}`);
+    return res.data;
+  },
+
+  getSeriesUpdate: async () => {
+    const res = await api.get('/film/series/update');
+    return res.data;
+  },
+
+  getPopularFilms: async () => {
+    const res = await api.get('/film/popular');
+    return res.data;
+  },
+
   getSeriesDetail: async (slug: string) => {
     const res = await api.get(`/film/series/${slug}`);
     return res.data;
@@ -417,6 +476,60 @@ export const filmApi = {
 
   getEpisodeStream: async (slug: string) => {
     const res = await api.get(`/film/episode/${slug}/stream`);
+    return res.data;
+  },
+
+  // TMDB methods for upcoming/now playing
+  getUpcoming: async (page = 1) => {
+    const res = await api.get(`/film/upcoming?page=${page}`);
+    return res.data;
+  },
+
+  getNowPlaying: async (page = 1) => {
+    const res = await api.get(`/film/nowplaying?page=${page}`);
+    return res.data;
+  },
+
+  getTrailer: async (slug: string) => {
+    const res = await api.get(`/film/trailer/${slug}`);
+    return res.data;
+  },
+};
+
+// ============ COLLECTIONS API ============
+export const collectionsApi = {
+  getCollections: async () => {
+    const res = await api.get('/collections');
+    return res.data;
+  },
+
+  createCollection: async (name: string, description?: string, isPublic?: boolean) => {
+    const res = await api.post('/collections', { name, description, isPublic });
+    return res.data;
+  },
+
+  getCollection: async (id: string) => {
+    const res = await api.get(`/collections/${id}`);
+    return res.data;
+  },
+
+  updateCollection: async (id: string, data: { name?: string; description?: string; isPublic?: boolean }) => {
+    const res = await api.put(`/collections/${id}`, data);
+    return res.data;
+  },
+
+  deleteCollection: async (id: string) => {
+    const res = await api.delete(`/collections/${id}`);
+    return res.data;
+  },
+
+  addToCollection: async (collectionId: string, film: { filmId: string; title: string; slug: string; poster?: string; year?: string; quality?: string }) => {
+    const res = await api.post(`/collections/${collectionId}/films`, film);
+    return res.data;
+  },
+
+  removeFromCollection: async (collectionId: string, filmId: string) => {
+    const res = await api.delete(`/collections/${collectionId}/films/${filmId}`);
     return res.data;
   },
 };

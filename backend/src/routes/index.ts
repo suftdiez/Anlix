@@ -6,4 +6,4 @@ export { default as dramaRoutes } from './drama.routes';
 export { default as filmRoutes } from './film.routes';
 export { default as komikRoutes } from './komik.routes';
 export { default as novelRoutes } from './novel.routes';
-
+export { default as collectionRoutes } from './collection.routes';

@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { Bookmark, WatchHistory, ReadingHistory, Comment, User } from '../models';
+import { Bookmark, WatchHistory, ReadingHistory, Comment, User, Review } from '../models';
 import { auth, AuthRequest } from '../middleware';
 import mongoose from 'mongoose';
 
@@ -142,23 +142,33 @@ router.get('/bookmarks/check/:contentId', auth, async (req: AuthRequest, res: Re
 
 /**
  * GET /api/user/history
- * Get watch history
+ * Get watch history (optionally filtered by type)
  */
 router.get('/history', auth, async (req: AuthRequest, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+    const type = req.query.type as 'anime' | 'donghua' | 'film' | undefined;
+    const incomplete = req.query.incomplete === 'true'; // Only get incomplete (progress < 90%)
 
-    const history = await WatchHistory.find({
+    const query: { userId: mongoose.Types.ObjectId; contentType?: string; progress?: { $lt: number } } = {
       userId: new mongoose.Types.ObjectId(req.user?.id),
-    })
+    };
+    
+    if (type) {
+      query.contentType = type;
+    }
+    
+    if (incomplete) {
+      query.progress = { $lt: 90 };
+    }
+
+    const history = await WatchHistory.find(query)
       .sort({ watchedAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
-    const total = await WatchHistory.countDocuments({
-      userId: new mongoose.Types.ObjectId(req.user?.id),
-    });
+    const total = await WatchHistory.countDocuments(query);
 
     res.json({
       success: true,
@@ -600,6 +610,203 @@ router.delete('/comments/:id', auth, async (req: AuthRequest, res: Response) => 
   } catch (error) {
     console.error('Delete comment error:', error);
     res.status(500).json({ success: false, error: 'Failed to delete comment' });
+  }
+});
+
+// ==================== REVIEWS (Film Ratings) ====================
+
+/**
+ * GET /api/user/reviews/:contentId
+ * Get reviews for content with average rating
+ */
+router.get('/reviews/:contentId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { contentId } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 10;
+
+    // Get reviews with user info
+    const reviews = await Review.find({ contentId })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('userId', 'username avatar');
+
+    const total = await Review.countDocuments({ contentId });
+
+    // Calculate average rating
+    const ratingStats = await Review.aggregate([
+      { $match: { contentId } },
+      {
+        $group: {
+          _id: null,
+          averageRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+          ratingCounts: {
+            $push: '$rating'
+          }
+        }
+      }
+    ]);
+
+    // Count each rating (1-5 stars)
+    let ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    if (ratingStats.length > 0 && ratingStats[0].ratingCounts) {
+      ratingStats[0].ratingCounts.forEach((rating: number) => {
+        ratingDistribution[rating as keyof typeof ratingDistribution]++;
+      });
+    }
+
+    res.json({
+      success: true,
+      page,
+      totalPages: Math.ceil(total / limit),
+      total,
+      averageRating: ratingStats[0]?.averageRating?.toFixed(1) || 0,
+      ratingDistribution,
+      data: reviews,
+    });
+  } catch (error) {
+    console.error('Get reviews error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get reviews' });
+  }
+});
+
+/**
+ * GET /api/user/reviews/:contentId/user
+ * Check if current user has reviewed this content
+ */
+router.get('/reviews/:contentId/user', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { contentId } = req.params;
+
+    const review = await Review.findOne({
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+      contentId,
+    }).populate('userId', 'username avatar');
+
+    res.json({
+      success: true,
+      hasReviewed: !!review,
+      review,
+    });
+  } catch (error) {
+    console.error('Check user review error:', error);
+    res.status(500).json({ success: false, error: 'Failed to check review' });
+  }
+});
+
+/**
+ * POST /api/user/reviews
+ * Add or update review
+ */
+router.post('/reviews', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { contentId, contentType, rating, content } = req.body;
+
+    if (!contentId || !rating || !content) {
+      res.status(400).json({ success: false, error: 'Missing required fields' });
+      return;
+    }
+
+    if (rating < 1 || rating > 5) {
+      res.status(400).json({ success: false, error: 'Rating must be between 1 and 5' });
+      return;
+    }
+
+    // Upsert - update if exists, create if not
+    const review = await Review.findOneAndUpdate(
+      {
+        userId: new mongoose.Types.ObjectId(req.user?.id),
+        contentId,
+      },
+      {
+        userId: new mongoose.Types.ObjectId(req.user?.id),
+        contentId,
+        contentType: contentType || 'film',
+        rating,
+        content,
+      },
+      { upsert: true, new: true }
+    );
+
+    await review.populate('userId', 'username avatar');
+
+    res.status(201).json({
+      success: true,
+      message: 'Review saved',
+      data: review,
+    });
+  } catch (error) {
+    console.error('Add review error:', error);
+    res.status(500).json({ success: false, error: 'Failed to save review' });
+  }
+});
+
+/**
+ * PUT /api/user/reviews/:id/like
+ * Like/unlike review
+ */
+router.put('/reviews/:id/like', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = new mongoose.Types.ObjectId(req.user?.id);
+
+    const review = await Review.findById(id);
+    if (!review) {
+      res.status(404).json({ success: false, error: 'Review not found' });
+      return;
+    }
+
+    const likedIndex = review.likedBy.findIndex(
+      (uid) => uid.toString() === userId.toString()
+    );
+
+    if (likedIndex > -1) {
+      // Unlike
+      review.likedBy.splice(likedIndex, 1);
+      review.likes = Math.max(0, review.likes - 1);
+    } else {
+      // Like
+      review.likedBy.push(userId);
+      review.likes += 1;
+    }
+
+    await review.save();
+
+    res.json({
+      success: true,
+      liked: likedIndex === -1,
+      likes: review.likes,
+    });
+  } catch (error) {
+    console.error('Like review error:', error);
+    res.status(500).json({ success: false, error: 'Failed to like review' });
+  }
+});
+
+/**
+ * DELETE /api/user/reviews/:id
+ * Delete review
+ */
+router.delete('/reviews/:id', auth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const review = await Review.findOneAndDelete({
+      _id: new mongoose.Types.ObjectId(id),
+      userId: new mongoose.Types.ObjectId(req.user?.id),
+    });
+
+    if (!review) {
+      res.status(404).json({ success: false, error: 'Review not found or not authorized' });
+      return;
+    }
+
+    res.json({ success: true, message: 'Review deleted' });
+  } catch (error) {
+    console.error('Delete review error:', error);
+    res.status(500).json({ success: false, error: 'Failed to delete review' });
   }
 });
 

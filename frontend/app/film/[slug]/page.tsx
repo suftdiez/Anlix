@@ -4,12 +4,27 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { filmApi } from '@/lib/api';
+import { filmApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { FiBookmark, FiFolderPlus } from 'react-icons/fi';
+import toast from 'react-hot-toast';
+import FilmReviews from '@/components/film/FilmReviews';
+import AddToCollectionModal from '@/components/film/AddToCollectionModal';
+import TrailerPlayer from '@/components/film/TrailerPlayer';
 
 interface StreamServer {
   name: string;
   url: string;
   quality?: string;
+}
+
+interface FilmItem {
+  id: string;
+  title: string;
+  slug: string;
+  poster: string;
+  year?: string;
+  url?: string;
 }
 
 interface FilmDetail {
@@ -27,6 +42,7 @@ interface FilmDetail {
   country?: string;
   translator?: string;
   servers: StreamServer[];
+  relatedFilms?: FilmItem[];
   isSeries?: boolean;
 }
 
@@ -38,6 +54,10 @@ export default function FilmDetailPage() {
   const [film, setFilm] = useState<FilmDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { isAuthenticated } = useAuth();
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [bookmarkId, setBookmarkId] = useState<string | null>(null);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
 
   useEffect(() => {
     const fetchFilmDetail = async () => {
@@ -77,6 +97,50 @@ export default function FilmDetailPage() {
 
     fetchFilmDetail();
   }, [slug]);
+
+  // Check bookmark status
+  useEffect(() => {
+    const checkBookmarkStatus = async () => {
+      if (!isAuthenticated || !slug) return;
+      try {
+        const data = await userApi.checkBookmark(slug, 'film');
+        setIsBookmarked(data.isBookmarked);
+        setBookmarkId(data.bookmark?._id || null);
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+    checkBookmarkStatus();
+  }, [isAuthenticated, slug]);
+
+  const handleBookmark = async () => {
+    if (!isAuthenticated) {
+      toast.error('Silakan login untuk menyimpan ke watchlist');
+      return;
+    }
+
+    try {
+      if (isBookmarked && bookmarkId) {
+        await userApi.removeBookmark(bookmarkId);
+        setIsBookmarked(false);
+        setBookmarkId(null);
+        toast.success('Dihapus dari watchlist');
+      } else if (film) {
+        const data = await userApi.addBookmark({
+          contentId: film.slug,
+          contentType: 'film',
+          title: film.title,
+          poster: film.poster,
+          slug: film.slug,
+        });
+        setIsBookmarked(true);
+        setBookmarkId(data.data._id);
+        toast.success('Ditambahkan ke watchlist');
+      }
+    } catch (error) {
+      toast.error('Gagal mengupdate watchlist');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -169,6 +233,33 @@ export default function FilmDetailPage() {
               Tonton Sekarang
             </Link>
           )}
+
+          {/* Watch Trailer Button */}
+          <TrailerPlayer slug={film.slug} filmTitle={film.title} />
+
+          {/* Watchlist Button */}
+          <button
+            onClick={handleBookmark}
+            className={`w-full mt-3 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium transition-all ${
+              isBookmarked
+                ? 'bg-primary/20 border border-primary text-primary'
+                : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600'
+            }`}
+          >
+            <FiBookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+            {isBookmarked ? 'Tersimpan di Watchlist' : 'Tambah ke Watchlist'}
+          </button>
+
+          {/* Add to Collection Button */}
+          {isAuthenticated && (
+            <button
+              onClick={() => setShowCollectionModal(true)}
+              className="w-full mt-3 flex items-center justify-center gap-2 py-3 px-4 rounded-lg font-medium transition-all bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700 hover:border-gray-600"
+            >
+              <FiFolderPlus className="w-5 h-5" />
+              Tambah ke Koleksi
+            </button>
+          )}
         </div>
 
         {/* Info */}
@@ -259,6 +350,72 @@ export default function FilmDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Related Films */}
+      {film.relatedFilms && film.relatedFilms.length > 0 && (
+        <div className="mt-12">
+          <h2 className="text-xl md:text-2xl font-display font-bold text-white mb-6 flex items-center gap-2">
+            <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+            </svg>
+            Film Terkait
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {film.relatedFilms.map((item, index) => (
+              <Link
+                key={`${item.slug}-${index}`}
+                href={`/film/${item.slug}`}
+                className="group relative bg-dark-card rounded-lg overflow-hidden border border-white/5 hover:border-primary/50 transition-all hover:scale-105"
+              >
+                <div className="aspect-[2/3] relative">
+                  {item.poster ? (
+                    <Image
+                      src={item.poster}
+                      alt={item.title}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 16vw"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-800 text-gray-500 text-xs">
+                      No Poster
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <div className="p-2">
+                  <h3 className="text-sm font-medium text-white line-clamp-2 group-hover:text-primary transition-colors">
+                    {item.title}
+                  </h3>
+                  {item.year && (
+                    <span className="text-xs text-gray-500">{item.year}</span>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reviews Section */}
+      <FilmReviews contentId={film.slug} filmTitle={film.title} />
+
+      {/* Add to Collection Modal */}
+      {showCollectionModal && (
+        <AddToCollectionModal
+          isOpen={showCollectionModal}
+          onClose={() => setShowCollectionModal(false)}
+          film={{
+            filmId: film.slug,
+            title: film.title,
+            slug: film.slug,
+            poster: film.poster,
+            year: film.year,
+            quality: 'HD',
+          }}
+        />
+      )}
     </div>
   );
 }

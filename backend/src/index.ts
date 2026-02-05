@@ -7,7 +7,7 @@ import dotenv from 'dotenv';
 
 import { connectDatabase } from './config/database';
 import redis from './config/redis';
-import { authRoutes, animeRoutes, donghuaRoutes, userRoutes, dramaRoutes, filmRoutes, komikRoutes, novelRoutes } from './routes';
+import { authRoutes, animeRoutes, donghuaRoutes, userRoutes, dramaRoutes, filmRoutes, komikRoutes, novelRoutes, collectionRoutes } from './routes';
 
 // Load environment variables
 dotenv.config();
@@ -75,6 +75,7 @@ app.use('/api/drama', dramaRoutes);
 app.use('/api/film', filmRoutes);
 app.use('/api/komik', komikRoutes);
 app.use('/api/novel', novelRoutes);
+app.use('/api/collections', collectionRoutes);
 
 // Root route
 app.get('/', (req, res) => {
@@ -92,6 +93,7 @@ app.get('/', (req, res) => {
       komik: '/api/komik',
       novel: '/api/novel',
       user: '/api/user',
+      collections: '/api/collections',
     },
   });
 });

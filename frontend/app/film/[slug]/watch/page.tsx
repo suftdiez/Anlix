@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { filmApi } from '@/lib/api';
+import { filmApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
+import { FiPlay, FiChevronLeft, FiMonitor, FiAlertCircle } from 'react-icons/fi';
 
 interface StreamServer {
   name: string;
@@ -27,6 +29,7 @@ export default function FilmWatchPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
+  const { isAuthenticated } = useAuth();
 
   const [film, setFilm] = useState<FilmDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,6 +60,31 @@ export default function FilmWatchPage() {
     fetchFilmDetail();
   }, [slug]);
 
+  // Open video in new tab and save to history
+  const handleWatchServer = async (server: StreamServer) => {
+    if (server.url) {
+      // Save to watch history when user clicks to watch
+      if (isAuthenticated && film) {
+        try {
+          await userApi.addHistory({
+            contentId: slug,
+            contentType: 'film',
+            episodeId: slug, // For films, we use slug as episode ID
+            episodeNumber: 1, // Films don't have episodes
+            title: film.title,
+            episodeTitle: film.title,
+            poster: film.poster,
+            slug: slug,
+            progress: 50, // Mark as 50% since we can't track actual progress in new tab
+          });
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+      window.open(server.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -77,6 +105,7 @@ export default function FilmWatchPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-20">
+          <FiAlertCircle className="w-16 h-16 mx-auto text-red-500 mb-4" />
           <p className="text-red-400 mb-4">{error || 'Film tidak ditemukan'}</p>
           <button
             onClick={() => router.back()}
@@ -88,13 +117,6 @@ export default function FilmWatchPage() {
       </div>
     );
   }
-
-  // Open video in new tab (workaround for X-Frame-Options blocking)
-  const handleWatchServer = (server: StreamServer) => {
-    if (server.url) {
-      window.open(server.url, '_blank', 'noopener,noreferrer');
-    }
-  };
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -115,10 +137,13 @@ export default function FilmWatchPage() {
         {film.year && <span className="text-gray-500 text-lg ml-2">({film.year})</span>}
       </h1>
 
-      {/* Server Selection - Clickable cards to open in new tab */}
+      {/* Server Selection */}
       {film.servers && film.servers.length > 0 ? (
         <div className="mb-8">
-          <h3 className="text-lg font-semibold text-white mb-4">Pilih Server untuk Menonton:</h3>
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <FiPlay className="w-5 h-5 text-primary" />
+            Pilih Server untuk Menonton:
+          </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {film.servers.map((server, idx) => (
               <button
@@ -128,9 +153,7 @@ export default function FilmWatchPage() {
               >
                 {/* Play icon */}
                 <div className="absolute top-4 right-4 w-12 h-12 bg-primary/20 group-hover:bg-primary rounded-full flex items-center justify-center transition-all">
-                  <svg className="w-6 h-6 text-primary group-hover:text-white transition-colors" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
+                  <FiPlay className="w-6 h-6 text-primary group-hover:text-white transition-colors" />
                 </div>
                 
                 <div className="pr-14">
@@ -141,7 +164,7 @@ export default function FilmWatchPage() {
                     </span>
                   )}
                   <p className="text-gray-400 text-sm mt-2">
-                    Klik untuk membuka di tab baru
+                    Klik untuk menonton
                   </p>
                 </div>
               </button>
@@ -150,9 +173,7 @@ export default function FilmWatchPage() {
         </div>
       ) : (
         <div className="bg-gray-800/50 rounded-xl p-8 text-center mb-8">
-          <svg className="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-          </svg>
+          <FiMonitor className="w-16 h-16 mx-auto text-gray-600 mb-4" />
           <p className="text-gray-400 text-lg">Tidak ada server tersedia</p>
           <p className="text-gray-500 mt-2">Silakan coba film lain atau kembali lagi nanti</p>
         </div>
@@ -162,9 +183,7 @@ export default function FilmWatchPage() {
       <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 border border-blue-500/30 rounded-xl p-5 mb-8">
         <div className="flex items-start gap-4">
           <div className="flex-shrink-0 w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
-            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <FiAlertCircle className="w-5 h-5 text-blue-400" />
           </div>
           <div>
             <h4 className="text-white font-semibold mb-2">Cara Menonton</h4>
@@ -202,9 +221,7 @@ export default function FilmWatchPage() {
         href={`/film/${film.slug}`}
         className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-        </svg>
+        <FiChevronLeft className="w-4 h-4" />
         Kembali ke Detail Film
       </Link>
     </div>

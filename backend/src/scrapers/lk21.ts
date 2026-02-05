@@ -2,7 +2,8 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://tv7.lk21official.cc';
+const BASE_URL = 'https://tv8.lk21official.cc';
+const SERIES_URL = 'https://tv3.nontondrama.my';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
 // In-memory cache as fallback when Redis is not available
@@ -66,6 +67,8 @@ export interface FilmDetail extends FilmItem {
   released?: string;
   translator?: string;
   servers: StreamServer[];
+  relatedFilms?: FilmItem[];
+  trailerUrl?: string;
 }
 
 export interface StreamServer {
@@ -465,6 +468,7 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
                    $('.poster img, .thumb img, .cover img').attr('src') ||
                    $('img[src*="poster"], img[src*="cover"]').first().attr('src') || '';
 
+
     // Synopsis
     let synopsis = '';
     $('.synopsis, .sinopsis, .description, .desc, [itemprop="description"]').each((_, el) => {
@@ -603,6 +607,70 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
       });
     }
 
+    // Extract related films ("Movie Terkait" section)
+    const relatedFilms: FilmItem[] = [];
+    const seenRelated = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+    
+    // Look for related movies section - scan all anchors with images after the player section
+    $('a').each((_, el) => {
+      const $el = $(el);
+      const $img = $el.find('img');
+      
+      if ($img.length === 0) return;
+      if (relatedFilms.length >= 12) return; // Limit to 12 related films
+      
+      const href = $el.attr('href') || '';
+      
+      // Skip navigation/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/artist/') || href.includes('/series/') || 
+          href.includes('/page/') || href.includes('/translator/') ||
+          href.includes('/release/') || href.includes('/search/') ||
+          href.includes('/year/') || href.includes('/rating') ||
+          href.includes('/director/')) {
+        return;
+      }
+      
+      // Skip current film
+      if (href.includes(slug)) return;
+      
+      const relTitle = $el.attr('title') || $img.attr('alt') || '';
+      if (!relTitle || relTitle.length < 3) return;
+      
+      let relSlug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!relSlug || seenRelated.has(relSlug) || relSlug.length < 3) return;
+      if (relSlug.includes('/')) return;
+      
+      const relPoster = $img.attr('src') || $img.attr('data-src') || '';
+      const relYearMatch = relSlug.match(yearPattern);
+      
+      seenRelated.add(relSlug);
+      relatedFilms.push({
+        id: relSlug,
+        title: relTitle.substring(0, 150),
+        slug: relSlug,
+        poster: relPoster,
+        year: relYearMatch ? relYearMatch[1] : '',
+        url: href.startsWith('http') ? href : `${BASE_URL}/${relSlug}`,
+      });
+    });
+    
+    console.log(`[LK21] Found ${relatedFilms.length} related films for ${slug}`);
+
+    // Extract trailer from YouTube iframe (mostly for series on nontondrama.my)
+    let trailerUrl: string | undefined;
+    const trailerIframe = $('div.trailer-series iframe[src*="youtube"], iframe[src*="youtube.com/embed"]').first();
+    if (trailerIframe.length > 0) {
+      const iframeSrc = trailerIframe.attr('src') || '';
+      const videoIdMatch = iframeSrc.match(/embed\/([a-zA-Z0-9_-]+)/);
+      if (videoIdMatch && videoIdMatch[1]) {
+        trailerUrl = `https://www.youtube.com/watch?v=${videoIdMatch[1]}`;
+        console.log(`[LK21] Found trailer: ${trailerUrl}`);
+      }
+    }
+
     const detail: FilmDetail = {
       id: slug,
       title: title.substring(0, 150),
@@ -618,6 +686,8 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
       country,
       translator,
       servers,
+      relatedFilms,
+      trailerUrl,
       url,
     };
 
@@ -721,38 +791,66 @@ export async function getFilmsByCountry(country: string, page: number = 1): Prom
 
   try {
     const url = `${BASE_URL}/country/${country}${page > 1 ? `/page/${page}` : ''}`;
+    console.log(`[LK21] Fetching country ${country} page ${page}: ${url}`);
+    
     const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     const films: FilmItem[] = [];
     const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
 
-    $('a[href*="lk21official.cc"]').each((_, el) => {
+    // Scan links that contain images (movie cards have poster images)
+    $('a').each((_, el) => {
       const $el = $(el);
+      const $img = $el.find('img');
+      
+      // Movie links must have an image inside
+      if ($img.length === 0) return;
+      
       const href = $el.attr('href') || '';
-      const slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
       
-      if (!slug || seen.has(slug) || slug.includes('/')) return;
-      
-      const title = $el.attr('title') || $el.find('img').attr('alt') || '';
-      const poster = $el.find('img').attr('src') || '';
-      const yearMatch = slug.match(/-(\d{4})$/);
-      
-      if (title && title.length > 2) {
-        seen.add(slug);
-        films.push({
-          id: slug,
-          title: title.substring(0, 150),
-          slug,
-          poster,
-          year: yearMatch ? yearMatch[1] : '',
-          country,
-          url: href,
-        });
+      // Skip nav/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/artist/') || href.includes('/series/') || 
+          href.includes('/page/') || href.includes('/translator/') ||
+          href.includes('/release/') || href.includes('/search/') ||
+          href.includes('/year/') || href.includes('/rating')) {
+        return;
       }
+      
+      // Get title from anchor title OR img alt
+      const title = $el.attr('title') || $img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.length < 3) return;
+      if (slug.includes('/')) return;
+      
+      const poster = $img.attr('src') || $img.attr('data-src') || '';
+      const yearMatch = slug.match(yearPattern);
+      
+      seen.add(slug);
+      films.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : '',
+        country,
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
     });
 
-    const hasNext = $('.pagination .next, a.next').length > 0 || films.length >= 10;
+    // Check for pagination
+    const paginationText = $('body').text();
+    const totalPagesMatch = paginationText.match(/dari\s+(\d+)\s+total\s+halaman/i);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1]) : 0;
+    const hasNext = totalPages > page || films.length >= 20;
+
+    console.log(`[LK21] Country ${country} page ${page}: Found ${films.length} films, totalPages: ${totalPages}`);
+
     const result = { data: films.slice(0, 24), hasNext };
     
     if (films.length > 0) {
@@ -762,6 +860,409 @@ export async function getFilmsByCountry(country: string, page: number = 1): Prom
     return result;
   } catch (error) {
     console.error('Error fetching films by country:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get featured/unggulan series from homepage
+ * Scrapes series that have EPS badges from the main LK21 homepage
+ */
+export async function getFeaturedSeries(page: number = 1): Promise<{ data: FilmItem[]; hasNext: boolean }> {
+  const cacheKey = `lk21:featured-series:${page}`;
+  const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Scrape from homepage where "SERIES UNGGULAN" section is
+    console.log(`[LK21] Fetching featured series from homepage`);
+    
+    const html = await throttledRequest(BASE_URL);
+    const $ = cheerio.load(html);
+
+    const series: FilmItem[] = [];
+    const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+
+    // Look for links with images that have EPS badges (series indicators)
+    // Series on LK21 have badges like "EPS 10" or "EPS 16" with season info
+    $('a').each((_, el) => {
+      const $el = $(el);
+      const $parent = $el.parent();
+      const $container = $parent.parent();
+      
+      // Check if this item has an EPS badge (series indicator)
+      const containerText = $container.text().toUpperCase();
+      const parentText = $parent.text().toUpperCase();
+      const hasEpsBadge = containerText.includes('EPS') || parentText.includes('EPS') || 
+                          containerText.includes('S.') || parentText.includes('S.');
+      
+      if (!hasEpsBadge) return;
+      
+      const $img = $el.find('img');
+      if ($img.length === 0) return;
+      
+      const href = $el.attr('href') || '';
+      
+      // Skip navigation/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/page/') || href.includes('/search/') ||
+          href.includes('/artist/') || href.includes('/translator/')) {
+        return;
+      }
+      
+      // Get title from anchor title OR img alt
+      const title = $el.attr('title') || $img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      // Extract slug
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.length < 3) return;
+      if (slug.includes('/')) return;
+      
+      const poster = $img.attr('src') || $img.attr('data-src') || '';
+      const yearMatch = slug.match(yearPattern);
+      
+      // Extract episode info from container text 
+      const epsMatch = containerText.match(/EPS\s*(\d+)/i) || parentText.match(/EPS\s*(\d+)/i);
+      const seasonMatch = containerText.match(/S\.?\s*(\d+)/i) || parentText.match(/S\.?\s*(\d+)/i);
+      
+      let quality = 'Series';
+      if (epsMatch) {
+        quality = `EPS ${epsMatch[1]}`;
+        if (seasonMatch) {
+          quality = `S${seasonMatch[1]} ${quality}`;
+        }
+      }
+      
+      seen.add(slug);
+      series.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : '',
+        quality,
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
+    });
+
+    console.log(`[LK21] Featured series: Found ${series.length} series from homepage`);
+
+    // Only return first page of results (no real pagination for homepage scraping)
+    const hasNext = false;
+    const result = { data: series.slice(0, 24), hasNext };
+    
+    if (series.length > 0) {
+      await setCache(cacheKey, result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error fetching featured series:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get series updates - recently updated series from homepage
+ * Scrapes from the "SERIES UPDATE" section on LK21 homepage
+ */
+export async function getSeriesUpdate(): Promise<{ data: FilmItem[]; hasNext: boolean }> {
+  const cacheKey = 'lk21:series-update';
+  const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    console.log(`[LK21] Fetching series update from homepage`);
+    
+    const html = await throttledRequest(BASE_URL);
+    const $ = cheerio.load(html);
+
+    const series: FilmItem[] = [];
+    const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+
+    // Find the "SERIES UPDATE" section by looking for the heading
+    let inSeriesUpdate = false;
+    let seriesUpdateSection: any = null;
+
+    // Search for section headers that contain "SERIES UPDATE"
+    $('h2, h3, .section-title, [class*="title"]').each((_, el) => {
+      const text = $(el).text().toUpperCase();
+      if (text.includes('SERIES UPDATE') || text.includes('UPDATE SERIES')) {
+        // Found the section, get its parent container
+        seriesUpdateSection = $(el).closest('section, .section, .row, .container, div').first();
+        if (seriesUpdateSection.length === 0) {
+          seriesUpdateSection = $(el).parent().parent();
+        }
+        inSeriesUpdate = true;
+        return false; // break
+      }
+    });
+
+    // If we found the section, extract series from it
+    if (seriesUpdateSection) {
+      seriesUpdateSection.find('a').each((_, el) => {
+        const $el = $(el);
+        const $img = $el.find('img');
+        
+        if ($img.length === 0) return;
+        if (series.length >= 24) return;
+        
+        const href = $el.attr('href') || '';
+        
+        // Skip navigation links
+        if (!href || 
+            href.includes('/genre/') || href.includes('/country/') || 
+            href.includes('/page/') || href.includes('/search/')) {
+          return;
+        }
+        
+        const title = $el.attr('title') || $img.attr('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.length < 3) return;
+        if (slug.includes('/')) return;
+        
+        const poster = $img.attr('src') || $img.attr('data-src') || '';
+        const yearMatch = slug.match(yearPattern);
+        
+        // Get episode info if available
+        const $parent = $el.parent();
+        const parentText = $parent.text().toUpperCase();
+        const epsMatch = parentText.match(/EPS\s*(\d+)/i);
+        
+        let quality = 'Update';
+        if (epsMatch) {
+          quality = `EPS ${epsMatch[1]}`;
+        }
+        
+        seen.add(slug);
+        series.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          quality,
+          url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+        });
+      });
+    }
+
+    // Fallback: If section not found, look for items with "update" indicators
+    if (series.length === 0) {
+      console.log('[LK21] Series update section not found, using fallback');
+      // Look for recently aired series (items with recent dates or "Baru" badge)
+      $('a').each((_, el) => {
+        const $el = $(el);
+        const $parent = $el.parent();
+        const $container = $parent.parent();
+        
+        const containerText = $container.text().toUpperCase();
+        const parentText = $parent.text().toUpperCase();
+        
+        // Look for indicators of recent updates
+        const hasUpdateIndicator = containerText.includes('EPS') && 
+          (containerText.includes('BARU') || containerText.includes('NEW') || 
+           containerText.includes('UPDATE') || containerText.includes('2026') ||
+           containerText.includes('2025'));
+        
+        if (!hasUpdateIndicator) return;
+        
+        const $img = $el.find('img');
+        if ($img.length === 0) return;
+        if (series.length >= 12) return;
+        
+        const href = $el.attr('href') || '';
+        if (!href || href.includes('/genre/') || href.includes('/page/')) return;
+        
+        const title = $el.attr('title') || $img.attr('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.includes('/')) return;
+        
+        const poster = $img.attr('src') || $img.attr('data-src') || '';
+        const yearMatch = slug.match(yearPattern);
+        const epsMatch = containerText.match(/EPS\s*(\d+)/i);
+        
+        seen.add(slug);
+        series.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          quality: epsMatch ? `EPS ${epsMatch[1]}` : 'Update',
+          url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+        });
+      });
+    }
+
+    console.log(`[LK21] Series update: Found ${series.length} series`);
+
+    const result = { data: series.slice(0, 24), hasNext: false };
+    
+    if (series.length > 0) {
+      await setCache(cacheKey, result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error fetching series update:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get popular/trending films from homepage
+ * Scrapes films from the "TERPOPULER" or trending section on LK21 homepage
+ */
+export async function getPopularFilms(): Promise<{ data: FilmItem[]; hasNext: boolean }> {
+  const cacheKey = 'lk21:popular-films';
+  const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    console.log(`[LK21] Fetching popular films from homepage`);
+    
+    const html = await throttledRequest(BASE_URL);
+    const $ = cheerio.load(html);
+
+    const films: FilmItem[] = [];
+    const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+
+    // Find the "TERPOPULER", "POPULAR", "TRENDING" section
+    let popularSection: any = null;
+
+    $('h2, h3, .section-title, [class*="title"]').each((_, el) => {
+      const text = $(el).text().toUpperCase();
+      if (text.includes('TERPOPULER') || text.includes('POPULAR') || 
+          text.includes('TRENDING') || text.includes('TOP FILM')) {
+        popularSection = $(el).closest('section, .section, .row, .container, div').first();
+        if (popularSection.length === 0) {
+          popularSection = $(el).parent().parent();
+        }
+        return false; // break
+      }
+    });
+
+    // If we found the section, extract films from it
+    if (popularSection) {
+      popularSection.find('a').each((_: any, el: any) => {
+        const $el = $(el);
+        const $img = $el.find('img');
+        
+        if ($img.length === 0) return;
+        if (films.length >= 24) return;
+        
+        const href = $el.attr('href') || '';
+        
+        // Skip navigation links and series (those with EPS badge)
+        if (!href || 
+            href.includes('/genre/') || href.includes('/country/') || 
+            href.includes('/page/') || href.includes('/search/')) {
+          return;
+        }
+        
+        // Skip series items
+        const parentText = $el.parent().text().toUpperCase();
+        if (parentText.includes('EPS') || parentText.includes('S.')) {
+          return;
+        }
+        
+        const title = $el.attr('title') || $img.attr('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.length < 3) return;
+        if (slug.includes('/')) return;
+        
+        const poster = $img.attr('src') || $img.attr('data-src') || '';
+        const yearMatch = slug.match(yearPattern);
+        
+        // Get quality badge
+        const qualityText = $el.find('.quality, .qlty').text().trim() || 
+                           $el.parent().find('.quality, .qlty').text().trim() || 'HD';
+        
+        seen.add(slug);
+        films.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          quality: qualityText,
+          url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+        });
+      });
+    }
+
+    // Fallback: Look for films with high ratings or quality indicators
+    if (films.length === 0) {
+      console.log('[LK21] Popular section not found, using fallback');
+      $('a').each((_, el) => {
+        const $el = $(el);
+        const $parent = $el.parent();
+        const $container = $parent.parent();
+        
+        const containerText = $container.text().toUpperCase();
+        const parentText = $parent.text().toUpperCase();
+        
+        // Skip series (items with EPS)
+        if (containerText.includes('EPS') || parentText.includes('EPS')) return;
+        
+        // Look for quality indicators (HD, BluRay, etc.)
+        const hasQuality = containerText.includes('HD') || containerText.includes('BLURAY') ||
+                          containerText.includes('CAM') || containerText.includes('WEB-DL');
+        
+        if (!hasQuality) return;
+        
+        const $img = $el.find('img');
+        if ($img.length === 0) return;
+        if (films.length >= 12) return;
+        
+        const href = $el.attr('href') || '';
+        if (!href || href.includes('/genre/') || href.includes('/page/')) return;
+        
+        const title = $el.attr('title') || $img.attr('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.includes('/')) return;
+        
+        const poster = $img.attr('src') || $img.attr('data-src') || '';
+        const yearMatch = slug.match(yearPattern);
+        
+        seen.add(slug);
+        films.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          quality: 'HD',
+          url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+        });
+      });
+    }
+
+    console.log(`[LK21] Popular films: Found ${films.length} films`);
+
+    const result = { data: films.slice(0, 24), hasNext: false };
+    
+    if (films.length > 0) {
+      await setCache(cacheKey, result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error fetching popular films:', error);
     return { data: [], hasNext: false };
   }
 }
@@ -785,8 +1286,6 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
 
     const browserPage = await browser.newPage();
     await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    const SERIES_URL = 'https://tv3.nontondrama.my';
     
     // Parse slug to extract base name and year
     // Input: "breaking-bad-2008" -> baseName: "breaking-bad", year: "2008"
@@ -1095,6 +1594,170 @@ export async function getEpisodeStreaming(episodeSlug: string): Promise<StreamSe
   }
 }
 
+/**
+ * Get films by year
+ */
+export async function getFilmsByYear(year: number, page: number = 1): Promise<{ data: FilmItem[]; hasNext: boolean }> {
+  const cacheKey = `lk21:year:${year}:${page}`;
+  const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/year/${year}${page > 1 ? `/page/${page}` : ''}`;
+    console.log(`[LK21] Fetching year ${year} page ${page}: ${url}`);
+    
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const films: FilmItem[] = [];
+    const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+
+    // Scan links that contain images (movie cards have poster images)
+    $('a').each((_, el) => {
+      const $el = $(el);
+      const $img = $el.find('img');
+      
+      // Movie links must have an image inside
+      if ($img.length === 0) return;
+      
+      const href = $el.attr('href') || '';
+      
+      // Skip nav/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/artist/') || href.includes('/series/') || 
+          href.includes('/page/') || href.includes('/translator/') ||
+          href.includes('/release/') || href.includes('/search/') ||
+          href.includes('/year/')) {
+        return;
+      }
+      
+      // Get title from anchor title OR img alt
+      const title = $el.attr('title') || $img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.length < 3) return;
+      if (slug.includes('/')) return;
+      
+      const poster = $img.attr('src') || $img.attr('data-src') || '';
+      const yearMatch = slug.match(yearPattern);
+      
+      seen.add(slug);
+      films.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : String(year),
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
+    });
+
+    // Check for pagination - look for "dari X total halaman" text
+    const paginationText = $('body').text();
+    const totalPagesMatch = paginationText.match(/dari\s+(\d+)\s+total\s+halaman/i);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1]) : 0;
+    const hasNext = totalPages > page || films.length >= 20;
+
+    console.log(`[LK21] Year ${year} page ${page}: Found ${films.length} films, totalPages: ${totalPages}`);
+
+    const result = { data: films.slice(0, 24), hasNext };
+    
+    if (films.length > 0) {
+      await setCache(cacheKey, result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error fetching films by year:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get top rated films
+ */
+export async function getTopRatedFilms(page: number = 1): Promise<{ data: FilmItem[]; hasNext: boolean }> {
+  const cacheKey = `lk21:toprated:${page}`;
+  const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/rating${page > 1 ? `/page/${page}` : ''}`;
+    console.log(`[LK21] Fetching top rated page ${page}: ${url}`);
+    
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const films: FilmItem[] = [];
+    const seen = new Set<string>();
+    const yearPattern = /-(\d{4})$/;
+
+    // Scan links that contain images (movie cards have poster images)
+    $('a').each((_, el) => {
+      const $el = $(el);
+      const $img = $el.find('img');
+      
+      // Movie links must have an image inside
+      if ($img.length === 0) return;
+      
+      const href = $el.attr('href') || '';
+      
+      // Skip nav/filter links
+      if (!href || 
+          href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/artist/') || href.includes('/series/') || 
+          href.includes('/page/') || href.includes('/translator/') ||
+          href.includes('/release/') || href.includes('/search/') ||
+          href.includes('/year/') || href.includes('/rating')) {
+        return;
+      }
+      
+      // Get title from anchor title OR img alt
+      const title = $el.attr('title') || $img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.length < 3) return;
+      if (slug.includes('/')) return;
+      
+      const poster = $img.attr('src') || $img.attr('data-src') || '';
+      const yearMatch = slug.match(yearPattern);
+      
+      seen.add(slug);
+      films.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : '',
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
+    });
+
+    // Check for pagination
+    const paginationText = $('body').text();
+    const totalPagesMatch = paginationText.match(/dari\s+(\d+)\s+total\s+halaman/i);
+    const totalPages = totalPagesMatch ? parseInt(totalPagesMatch[1]) : 0;
+    const hasNext = totalPages > page || films.length >= 20;
+
+    console.log(`[LK21] Top rated page ${page}: Found ${films.length} films, totalPages: ${totalPages}`);
+
+    const result = { data: films.slice(0, 24), hasNext };
+    
+    if (films.length > 0) {
+      await setCache(cacheKey, result);
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error fetching top rated films:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
 export default {
   getLatestFilms,
   getTrendingFilms,
@@ -1102,6 +1765,8 @@ export default {
   getFilmDetail,
   getFilmsByGenre,
   getFilmsByCountry,
+  getFilmsByYear,
+  getTopRatedFilms,
   getSeriesDetail,
   getEpisodeStreaming,
 };
