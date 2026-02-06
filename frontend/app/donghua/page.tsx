@@ -6,6 +6,8 @@ import { FiSearch, FiGrid, FiPlay, FiCheckCircle, FiShuffle, FiCalendar } from '
 import { AnimeCard, Pagination, CardGridSkeleton, HeroCarousel, HeroSkeleton } from '@/components';
 import { donghuaApi } from '@/lib/api';
 import ContinueWatching from '@/components/shared/ContinueWatching';
+import RecentlyUpdated from '@/components/shared/RecentlyUpdated';
+import TopRated from '@/components/shared/TopRated';
 
 interface DonghuaItem {
   id: string;
@@ -204,6 +206,12 @@ export default function DonghuaPage() {
 
       {/* Continue Watching Section */}
       <ContinueWatching contentType="donghua" />
+
+      {/* Recently Updated Section */}
+      <RecentlyUpdated maxItems={12} />
+
+      {/* Top Rated Section */}
+      <TopRated maxItems={10} />
 
       {/* Error Message */}
       {error && (

@@ -884,6 +884,232 @@ export async function getSchedule(): Promise<Schedule> {
   }
 }
 
+/**
+ * Get donghua by season (year or seasonal like winter-2023)
+ */
+export async function getBySeason(season: string, page: number = 1): Promise<{ data: DonghuaItem[]; hasNext: boolean }> {
+  const cacheKey = `anichin:season:${season}:${page}`;
+  const cached = await getCached<{ data: DonghuaItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // For page 1, don't include /page/1/ in URL
+    const url = page === 1 
+      ? `${BASE_URL}/season/${season}/`
+      : `${BASE_URL}/season/${season}/page/${page}/`;
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const donghuaList: DonghuaItem[] = [];
+    const seen = new Set<string>();
+
+    $('.listupd .bs, .bsx, article.bs').each((_, el) => {
+      const $el = $(el);
+      const linkEl = $el.find('a').first();
+      const href = linkEl.attr('href') || '';
+      
+      let title = $el.find('.tt h2').text().trim() ||
+                  $el.find('.tt').text().trim() ||
+                  $el.find('.title').text().trim() ||
+                  linkEl.attr('title') || '';
+      
+      const poster = $el.find('img').attr('src') || 
+                     $el.find('img').attr('data-src') || '';
+      const rating = $el.find('.rating i').text().trim();
+      const status = $el.find('.status').text().trim() || 
+                     $el.find('.epx').text().trim();
+
+      if (href && title) {
+        let slug = '';
+        if (href.includes('/donghua/')) {
+          const match = href.match(/\/donghua\/([^/]+)/);
+          slug = match ? match[1] : '';
+        } else {
+          slug = href.split('/').filter(Boolean).pop() || '';
+        }
+        
+        if (!seen.has(slug)) {
+          seen.add(slug);
+          donghuaList.push({
+            id: slug,
+            title: title.substring(0, 120),
+            slug,
+            poster,
+            type: 'Donghua',
+            rating: rating || undefined,
+            status: status || undefined,
+            url: `${BASE_URL}/donghua/${slug}/`,
+          });
+        }
+      }
+    });
+
+    const hasNext = $('.hpage .r, .pagination .next, .next.page-numbers, a.next, .nextpostslink').length > 0;
+    const result = { data: donghuaList, hasNext };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('Error fetching donghua by season:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get popular donghua from homepage "Popular Series" section
+ * Supports period: 'weekly', 'monthly', 'all'
+ */
+export async function getPopularDonghua(period: string = 'weekly'): Promise<{ data: DonghuaItem[]; hasNext: boolean }> {
+  const cacheKey = `anichin:popular:${period}`;
+  const cached = await getCached<{ data: DonghuaItem[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    // Popular series is on homepage
+    const html = await throttledRequest(BASE_URL);
+    const $ = cheerio.load(html);
+
+    const donghuaList: DonghuaItem[] = [];
+    const seen = new Set<string>();
+
+    // Anichin uses .wpop-content containers for each tab
+    // Index 0 = Weekly, 1 = Monthly, 2 = All
+    const tabIndex = period === 'weekly' ? 0 : period === 'monthly' ? 1 : 2;
+    
+    // Get all wpop-content containers
+    const contentContainers = $('.wpop-content');
+    
+    let targetContainer: cheerio.Cheerio<any> | null = null;
+    
+    if (contentContainers.length > tabIndex) {
+      targetContainer = $(contentContainers[tabIndex]);
+    } else if (contentContainers.length > 0) {
+      // Fallback to first container if specific one not found
+      targetContainer = $(contentContainers[0]);
+    }
+    
+    // If .wpop-content not found, try alternative selectors
+    if (!targetContainer || targetContainer.length === 0) {
+      // Try .serieslist or similar
+      const altContainers = $('.serieslist, .popularlist, .ts-wpop-series ul');
+      if (altContainers.length > tabIndex) {
+        targetContainer = $(altContainers[tabIndex]);
+      } else if (altContainers.length > 0) {
+        targetContainer = $(altContainers[0]);
+      }
+    }
+    
+    if (targetContainer && targetContainer.length > 0) {
+      // Parse items within the container
+      targetContainer.find('li').each((index, el) => {
+        const $el = $(el);
+        
+        // Get link and title - Anichin uses .series class for title
+        const linkEl = $el.find('a[href*="/donghua/"]').first();
+        const href = linkEl.attr('href') || '';
+        
+        const title = $el.find('.series').text().trim() ||
+                      $el.find('.leftseries h2').text().trim() ||
+                      $el.find('h4').text().trim() ||
+                      linkEl.attr('title') || '';
+        
+        // Get poster
+        const poster = $el.find('img').attr('src') ||
+                       $el.find('img').attr('data-src') || '';
+        
+        // Get rating - look for star rating value
+        const ratingEl = $el.find('.rating, .numscore, .rt');
+        let rating = '';
+        if (ratingEl.length > 0) {
+          // Try to get numeric rating
+          rating = ratingEl.text().replace(/[^0-9.]/g, '').trim();
+        }
+        
+        // Get genres
+        const genres: string[] = [];
+        $el.find('.genpost a, .genre a, a[href*="/genres/"]').each((_, genreEl) => {
+          genres.push($(genreEl).text().trim());
+        });
+
+        if (href && title) {
+          const match = href.match(/\/donghua\/([^/]+)/);
+          const slug = match ? match[1] : '';
+          
+          if (slug && !seen.has(slug)) {
+            seen.add(slug);
+            donghuaList.push({
+              id: slug,
+              title: title.substring(0, 120),
+              slug,
+              poster,
+              type: 'Donghua',
+              rating: rating || undefined,
+              genres: genres.length > 0 ? genres : undefined,
+              url: `${BASE_URL}/donghua/${slug}/`,
+            });
+          }
+        }
+      });
+    }
+
+    const result = { data: donghuaList, hasNext: false };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('Error fetching popular donghua:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get available seasons list
+ */
+export async function getSeasonsList(): Promise<{ year: string[]; seasonal: { name: string; slug: string }[] }> {
+  const cacheKey = 'anichin:seasons-list';
+  const cached = await getCached<{ year: string[]; seasonal: { name: string; slug: string }[] }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/donghua/`;
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const years: string[] = [];
+    const seasonal: { name: string; slug: string }[] = [];
+
+    // Parse season links from sidebar
+    $('a[href*="/season/"]').each((_, el) => {
+      const href = $(el).attr('href') || '';
+      const text = $(el).text().trim();
+      
+      const match = href.match(/\/season\/([^/]+)/);
+      if (match) {
+        const seasonSlug = match[1];
+        // Check if it's a year (4 digits) or seasonal (like winter-2023)
+        if (/^\d{4}$/.test(seasonSlug)) {
+          if (!years.includes(seasonSlug)) {
+            years.push(seasonSlug);
+          }
+        } else if (seasonSlug.includes('-')) {
+          const name = text.replace(/\d+$/, '').trim(); // Remove count number
+          if (!seasonal.find(s => s.slug === seasonSlug)) {
+            seasonal.push({ name: name || seasonSlug, slug: seasonSlug });
+          }
+        }
+      }
+    });
+
+    // Sort years descending
+    years.sort((a, b) => parseInt(b) - parseInt(a));
+
+    const result = { year: years, seasonal };
+    await setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('Error fetching seasons list:', error);
+    return { year: [], seasonal: [] };
+  }
+}
+
 export default {
   getLatestDonghua,
   getOngoingDonghua,
@@ -894,4 +1120,6 @@ export default {
   getDonghuaByGenre,
   getPopularDonghua,
   getSchedule,
+  getBySeason,
+  getSeasonsList,
 };

@@ -46,6 +46,27 @@ router.get('/ongoing', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/donghua/popular
+ * Get popular donghua (weekly/monthly/all)
+ */
+router.get('/popular', async (req: Request, res: Response) => {
+  try {
+    const period = (req.query.period as string) || 'weekly';
+    const result = await anichin.getPopularDonghua(period);
+    
+    res.json({
+      success: true,
+      period,
+      hasNext: result.hasNext,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Error fetching popular donghua:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch popular donghua' });
+  }
+});
+
+/**
  * GET /api/donghua/completed
  * Get completed donghua
  */
@@ -63,6 +84,47 @@ router.get('/completed', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching completed donghua:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch donghua' });
+  }
+});
+
+/**
+ * GET /api/donghua/seasons
+ * Get available seasons list
+ */
+router.get('/seasons', async (req: Request, res: Response) => {
+  try {
+    const result = await anichin.getSeasonsList();
+    
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching seasons list:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch seasons' });
+  }
+});
+
+/**
+ * GET /api/donghua/season/:season
+ * Get donghua by season (year like 2025 or seasonal like winter-2023)
+ */
+router.get('/season/:season', async (req: Request, res: Response) => {
+  try {
+    const { season } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await anichin.getBySeason(season, page);
+    
+    res.json({
+      success: true,
+      data: result.data,
+      hasNext: result.hasNext,
+      page,
+      season,
+    });
+  } catch (error) {
+    console.error('Error fetching donghua by season:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch donghua by season' });
   }
 });
 

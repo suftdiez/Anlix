@@ -145,6 +145,21 @@ export const donghuaApi = {
     const res = await api.get('/donghua/schedule');
     return res.data;
   },
+
+  getSeasons: async () => {
+    const res = await api.get('/donghua/seasons');
+    return res.data;
+  },
+
+  getBySeason: async (season: string, page = 1) => {
+    const res = await api.get(`/donghua/season/${season}?page=${page}`);
+    return res.data;
+  },
+
+  getPopular: async (period = 'weekly') => {
+    const res = await api.get(`/donghua/popular?period=${period}`);
+    return res.data;
+  },
 };
 
 // ============ USER API ============

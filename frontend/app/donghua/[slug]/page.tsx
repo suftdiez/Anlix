@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { getImageUrl } from '@/lib/utils';
 import { DetailSkeleton, EpisodeListSkeleton } from '@/components';
 import toast from 'react-hot-toast';
+import SimilarDonghua from '@/components/shared/SimilarDonghua';
 
 interface Episode {
   id: string;
@@ -253,6 +254,15 @@ export default function DonghuaDetailPage() {
             <p className="text-gray-500 text-center py-8">Belum ada episode tersedia</p>
           )}
         </motion.div>
+
+        {/* Similar Donghua */}
+        {donghua.genres && donghua.genres.length > 0 && (
+          <SimilarDonghua
+            currentSlug={slug}
+            genres={donghua.genres}
+            maxItems={6}
+          />
+        )}
       </div>
     </div>
   );
