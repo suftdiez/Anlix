@@ -72,8 +72,28 @@ export const animeApi = {
   },
 
   search: async (query: string, page = 1) => {
-    const res = await api.get(`/anime/search?q=${encodeURIComponent(query)}&page=${page}`);
-    return res.data;
+    // Search from both samehadaku and otakudesu sources
+    const [samehadakuRes, otakudesuRes] = await Promise.all([
+      api.get(`/anime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
+      api.get(`/anime/otakudesu/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
+    ]);
+    
+    const samehadakuData = samehadakuRes.data?.data || [];
+    const otakudesuData = otakudesuRes.data?.data || [];
+    
+    // Combine and deduplicate by title (case-insensitive)
+    const seen = new Set<string>();
+    const combined = [...samehadakuData, ...otakudesuData].filter(item => {
+      const key = item.title?.toLowerCase().replace(/\s+/g, '');
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    
+    return {
+      data: combined,
+      hasNext: samehadakuRes.data?.hasNext || otakudesuRes.data?.hasNext || false,
+    };
   },
 
   getByGenre: async (genre: string, page = 1) => {
@@ -82,13 +102,35 @@ export const animeApi = {
   },
 
   getDetail: async (slug: string) => {
-    const res = await api.get(`/anime/detail/${slug}`);
-    return res.data;
+    // Try samehadaku first
+    try {
+      const res = await api.get(`/anime/detail/${slug}`);
+      if (res.data?.data) {
+        return res.data;
+      }
+    } catch (e) {
+      // Ignore and try otakudesu
+    }
+    
+    // Fallback to otakudesu
+    const otakuRes = await api.get(`/anime/otakudesu/detail/${slug}`);
+    return otakuRes.data;
   },
 
   getEpisode: async (slug: string) => {
-    const res = await api.get(`/anime/episode/${slug}`);
-    return res.data;
+    // Try samehadaku first
+    try {
+      const res = await api.get(`/anime/episode/${slug}`);
+      if (res.data?.data) {
+        return res.data;
+      }
+    } catch (e) {
+      // Ignore and try otakudesu
+    }
+    
+    // Fallback to otakudesu
+    const otakuRes = await api.get(`/anime/otakudesu/episode/${slug}`);
+    return otakuRes.data;
   },
 
   getServerStream: async (post: string, nume: string, type: string = 'video') => {

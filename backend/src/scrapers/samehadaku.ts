@@ -15,12 +15,21 @@ const MIN_REQUEST_INTERVAL = 1000; // Minimum 1 second between requests
 // Axios instance with headers to avoid blocking
 const axiosInstance = axios.create({
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
+    'Referer': 'https://www.google.com/',
   },
-  timeout: 15000,
+  timeout: 20000,
+  maxRedirects: 5,
 });
 
 // Delay helper to avoid rate limiting
@@ -168,25 +177,30 @@ export async function getLatestAnime(page: number = 1): Promise<{ data: AnimeIte
     const seen = new Set<string>();
 
     // Parse anime/episode items from homepage
-    $('.post-show ul li, .listupd .bs, .bsx, article.bs, .animpost').each((_, el) => {
+    // v1.samehadaku.how uses .dtla, samehadaku.li uses .post-show, .listupd
+    $('.dtla, .post-show ul li, .listupd .bs, .bsx, article.bs, .animpost').each((_, el) => {
       const $el = $(el);
       const linkEl = $el.find('a').first();
       const href = linkEl.attr('href') || '';
       
-      // Get title
-      let title = $el.find('.tt h2').text().trim() ||
+      // Get title - v1.samehadaku.how uses .entry-title, .lftinfo h2
+      let title = $el.find('.entry-title').text().trim() ||
+                  $el.find('.lftinfo h2').text().trim() ||
+                  $el.find('.tt h2').text().trim() ||
                   $el.find('.tt').text().trim() ||
                   $el.find('.title').text().trim() ||
                   $el.find('h2').text().trim() ||
                   linkEl.attr('title') || '';
       
-      // Get poster
-      const poster = $el.find('img').attr('src') || 
+      // Get poster - v1.samehadaku.how uses .thumbass img
+      const poster = $el.find('.thumbass img, .imgseries img').attr('src') || 
+                     $el.find('img').attr('src') || 
                      $el.find('img').attr('data-src') ||
                      $el.find('img').attr('data-lazy-src') || '';
       
       const episode = $el.find('.epx').text().trim() ||
-                      $el.find('.sb').text().trim();
+                      $el.find('.sb').text().trim() ||
+                      $el.find('.epnum').text().trim();
       const type = $el.find('.typez').text().trim() ||
                    $el.find('.type').text().trim();
       const status = $el.find('.status').text().trim();
