@@ -76,8 +76,9 @@ export default function EpisodePage() {
     const fetchData = async () => {
       try {
         // Fetch episode and detail in parallel
+        // Pass slug to getEpisode so it can detect kuramanime format
         const [episodeResult, detailResult] = await Promise.all([
-          animeApi.getEpisode(episode),
+          animeApi.getEpisode(episode, slug),
           animeApi.getDetail(slug).catch(() => ({ data: null })), // Get poster from detail
         ]);
         

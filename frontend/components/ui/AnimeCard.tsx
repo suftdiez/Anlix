@@ -16,10 +16,12 @@ interface AnimeCardProps {
   latestEpisode?: string;
   status?: string;
   contentType?: 'anime' | 'donghua' | 'film';
+  source?: 'samehadaku' | 'otakudesu' | 'kuramanime';
   index?: number;
 }
 
 export default function AnimeCard({
+  id,
   title,
   slug,
   poster,
@@ -28,13 +30,18 @@ export default function AnimeCard({
   latestEpisode,
   status,
   contentType = 'anime',
+  source,
   index = 0,
 }: AnimeCardProps) {
+  // For kuramanime, use format kuramanime-{id}--{slug} to work with Next.js routing
+  // The double dash -- separates id from slug, allowing frontend to detect and parse
+  const animeSlug = source === 'kuramanime' ? `kuramanime-${id}--${slug}` : slug;
+  
   const href = contentType === 'donghua' 
     ? `/donghua/${slug}` 
     : contentType === 'film' 
     ? `/film/${slug}` 
-    : `/anime/${slug}`;
+    : `/anime/${animeSlug}`;
 
   return (
     <motion.div

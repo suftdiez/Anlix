@@ -72,18 +72,20 @@ export const animeApi = {
   },
 
   search: async (query: string, page = 1) => {
-    // Search from both samehadaku and otakudesu sources
-    const [samehadakuRes, otakudesuRes] = await Promise.all([
+    // Search from samehadaku, otakudesu, and kuramanime sources
+    const [samehadakuRes, otakudesuRes, kuramanimeRes] = await Promise.all([
       api.get(`/anime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
       api.get(`/anime/otakudesu/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
+      api.get(`/anime/kuramanime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
     ]);
     
     const samehadakuData = samehadakuRes.data?.data || [];
     const otakudesuData = otakudesuRes.data?.data || [];
+    const kuramanimeData = kuramanimeRes.data?.data || [];
     
     // Combine and deduplicate by title (case-insensitive)
     const seen = new Set<string>();
-    const combined = [...samehadakuData, ...otakudesuData].filter(item => {
+    const combined = [...samehadakuData, ...otakudesuData, ...kuramanimeData].filter(item => {
       const key = item.title?.toLowerCase().replace(/\s+/g, '');
       if (seen.has(key)) return false;
       seen.add(key);
@@ -92,7 +94,7 @@ export const animeApi = {
     
     return {
       data: combined,
-      hasNext: samehadakuRes.data?.hasNext || otakudesuRes.data?.hasNext || false,
+      hasNext: samehadakuRes.data?.hasNext || otakudesuRes.data?.hasNext || kuramanimeRes.data?.hasNext || false,
     };
   },
 
@@ -102,6 +104,22 @@ export const animeApi = {
   },
 
   getDetail: async (slug: string) => {
+    // Check if this is a kuramanime path (format: "kuramanime-{id}--{slug}")
+    const kuramanimeMatch = slug.match(/^kuramanime-(\d+)--(.+)$/);
+    
+    if (kuramanimeMatch) {
+      const [, id, animeSlug] = kuramanimeMatch;
+      // Direct kuramanime lookup using id/slug path format
+      try {
+        const res = await api.get(`/anime/kuramanime/detail/${id}/${animeSlug}`);
+        if (res.data?.data) {
+          return res.data;
+        }
+      } catch (e) {
+        // Ignore and try other sources
+      }
+    }
+    
     // Try samehadaku first
     try {
       const res = await api.get(`/anime/detail/${slug}`);
@@ -113,14 +131,41 @@ export const animeApi = {
     }
     
     // Fallback to otakudesu
-    const otakuRes = await api.get(`/anime/otakudesu/detail/${slug}`);
-    return otakuRes.data;
+    try {
+      const otakuRes = await api.get(`/anime/otakudesu/detail/${slug}`);
+      if (otakuRes.data?.data) {
+        return otakuRes.data;
+      }
+    } catch (e) {
+      // Ignore and try kuramanime
+    }
+    
+    // Final fallback to kuramanime
+    const kuraRes = await api.get(`/anime/kuramanime/detail/${slug}`);
+    return kuraRes.data;
   },
 
-  getEpisode: async (slug: string) => {
+  getEpisode: async (episodeSlug: string, animeSlug?: string) => {
+    // Check if animeSlug indicates kuramanime format
+    if (animeSlug) {
+      const kuramanimeMatch = animeSlug.match(/^kuramanime-(\d+)--(.+)$/);
+      if (kuramanimeMatch) {
+        const [, animeId] = kuramanimeMatch;
+        // For kuramanime, use the anime ID and episode number
+        try {
+          const res = await api.get(`/anime/kuramanime/episode/${animeId}/${episodeSlug}`);
+          if (res.data?.data) {
+            return res.data;
+          }
+        } catch (e) {
+          console.error('Kuramanime episode error:', e);
+        }
+      }
+    }
+    
     // Try samehadaku first
     try {
-      const res = await api.get(`/anime/episode/${slug}`);
+      const res = await api.get(`/anime/episode/${episodeSlug}`);
       if (res.data?.data) {
         return res.data;
       }
@@ -129,7 +174,7 @@ export const animeApi = {
     }
     
     // Fallback to otakudesu
-    const otakuRes = await api.get(`/anime/otakudesu/episode/${slug}`);
+    const otakuRes = await api.get(`/anime/otakudesu/episode/${episodeSlug}`);
     return otakuRes.data;
   },
 

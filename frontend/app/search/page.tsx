@@ -18,6 +18,7 @@ interface ContentItem {
   rating?: string;
   latestEpisode?: string;
   status?: string;
+  source?: 'samehadaku' | 'otakudesu' | 'kuramanime';
 }
 
 interface DramaItem {
