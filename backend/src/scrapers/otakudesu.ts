@@ -621,6 +621,109 @@ export async function getAnimeByGenre(genre: string, page: number = 1): Promise<
   }
 }
 
+/**
+ * Get anime release schedule (per day)
+ */
+export interface ScheduleItem {
+  title: string;
+  slug: string;
+  url: string;
+  poster?: string;
+}
+
+export interface ScheduleData {
+  [day: string]: ScheduleItem[];
+}
+
+// Helper to fetch poster for a single anime (with caching)
+async function fetchAnimePoster(slug: string): Promise<string> {
+  // Check if we already have the detail cached
+  const cached = await getCached<AnimeDetail>(`otakudesu:detail:${slug}`);
+  if (cached?.poster) return cached.poster;
+
+  try {
+    const url = `${BASE_URL}/anime/${slug}/`;
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+    return $('.fotoanime img, .thumbook img').attr('src') || '';
+  } catch {
+    return '';
+  }
+}
+
+// Batch fetch with concurrency limit
+async function batchFetchPosters(items: ScheduleItem[], concurrency: number = 3): Promise<void> {
+  for (let i = 0; i < items.length; i += concurrency) {
+    const batch = items.slice(i, i + concurrency);
+    const results = await Promise.allSettled(
+      batch.map(item => fetchAnimePoster(item.slug))
+    );
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value) {
+        batch[idx].poster = result.value;
+      }
+    });
+  }
+}
+
+export async function getSchedule(): Promise<ScheduleData> {
+  const cacheKey = 'otakudesu:schedule';
+  const cached = await getCached<ScheduleData>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${BASE_URL}/jadwal-rilis/`;
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+
+    const schedule: ScheduleData = {};
+    const allItems: ScheduleItem[] = [];
+
+    $('h2').each((_, el) => {
+      const day = $(el).text().trim();
+      if (!day) return;
+
+      const nextUl = $(el).next('ul');
+      const items: ScheduleItem[] = [];
+
+      nextUl.find('li').each((_, li) => {
+        const a = $(li).find('a').first();
+        const title = a.text().trim();
+        const href = a.attr('href') || '';
+        const match = href.match(/\/anime\/([^/]+)/);
+        const slug = match ? match[1] : '';
+
+        if (title && slug) {
+          const item: ScheduleItem = { title, slug, url: href };
+          items.push(item);
+          allItems.push(item);
+        }
+      });
+
+      if (items.length > 0) {
+        schedule[day] = items;
+      }
+    });
+
+    // Fetch poster images for all schedule items
+    await batchFetchPosters(allItems, 3);
+
+    // Cache for 6 hours since schedule doesn't change often
+    const schedCacheTTL = 21600;
+    const jsonData = JSON.stringify(schedule);
+    await redis.set(cacheKey, jsonData, schedCacheTTL);
+    memoryCache.set(cacheKey, {
+      data: jsonData,
+      expiry: Date.now() + (schedCacheTTL * 1000),
+    });
+
+    return schedule;
+  } catch (error) {
+    console.error('Error fetching schedule from otakudesu:', error);
+    return {};
+  }
+}
+
 export default {
   getLatestAnime,
   getCompleteAnime,
@@ -628,4 +731,5 @@ export default {
   getAnimeDetail,
   getEpisodeDetail,
   getAnimeByGenre,
+  getSchedule,
 };

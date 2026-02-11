@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { HeroCarousel, SectionGrid, HeroSkeleton, CardGridSkeleton } from '@/components';
 import { animeApi, donghuaApi } from '@/lib/api';
+import ContinueWatching from '@/components/shared/ContinueWatching';
 
 interface ContentItem {
   id: string;
@@ -64,6 +65,8 @@ export default function HomePage() {
 
       {/* Content Sections */}
       <div className="container mx-auto px-4">
+        {/* Continue Watching - shows for logged-in users with watch history */}
+        <ContinueWatching maxItems={8} />
         {/* Latest Anime */}
         {isLoading ? (
           <div className="py-8">

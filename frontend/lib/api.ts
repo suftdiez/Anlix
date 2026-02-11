@@ -72,20 +72,22 @@ export const animeApi = {
   },
 
   search: async (query: string, page = 1) => {
-    // Search from samehadaku, otakudesu, and kuramanime sources
-    const [samehadakuRes, otakudesuRes, kuramanimeRes] = await Promise.all([
+    // Search from samehadaku, otakudesu, kuramanime, and subnime sources
+    const [samehadakuRes, otakudesuRes, kuramanimeRes, subnimeRes] = await Promise.all([
       api.get(`/anime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
       api.get(`/anime/otakudesu/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
       api.get(`/anime/kuramanime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
+      api.get(`/anime/subnime/search?q=${encodeURIComponent(query)}&page=${page}`).catch(() => ({ data: { data: [], hasNext: false } })),
     ]);
     
     const samehadakuData = samehadakuRes.data?.data || [];
     const otakudesuData = otakudesuRes.data?.data || [];
     const kuramanimeData = kuramanimeRes.data?.data || [];
+    const subnimeData = subnimeRes.data?.data || [];
     
     // Combine and deduplicate by title (case-insensitive)
     const seen = new Set<string>();
-    const combined = [...samehadakuData, ...otakudesuData, ...kuramanimeData].filter(item => {
+    const combined = [...samehadakuData, ...otakudesuData, ...kuramanimeData, ...subnimeData].filter(item => {
       const key = item.title?.toLowerCase().replace(/\s+/g, '');
       if (seen.has(key)) return false;
       seen.add(key);
@@ -94,7 +96,7 @@ export const animeApi = {
     
     return {
       data: combined,
-      hasNext: samehadakuRes.data?.hasNext || otakudesuRes.data?.hasNext || kuramanimeRes.data?.hasNext || false,
+      hasNext: samehadakuRes.data?.hasNext || otakudesuRes.data?.hasNext || kuramanimeRes.data?.hasNext || subnimeRes.data?.hasNext || false,
     };
   },
 
@@ -104,6 +106,20 @@ export const animeApi = {
   },
 
   getDetail: async (slug: string) => {
+    // Check if this is a subnime path (format: "subnime-{slug}")
+    const subnimeMatch = slug.match(/^subnime-(.+)$/);
+    if (subnimeMatch) {
+      const [, animeSlug] = subnimeMatch;
+      try {
+        const res = await api.get(`/anime/subnime/detail/${animeSlug}`);
+        if (res.data?.data) {
+          return res.data;
+        }
+      } catch (e) {
+        // Ignore and try other sources
+      }
+    }
+    
     // Check if this is a kuramanime path (format: "kuramanime-{id}--{slug}")
     const kuramanimeMatch = slug.match(/^kuramanime-(\d+)--(.+)$/);
     
@@ -112,6 +128,20 @@ export const animeApi = {
       // Direct kuramanime lookup using id/slug path format
       try {
         const res = await api.get(`/anime/kuramanime/detail/${id}/${animeSlug}`);
+        if (res.data?.data) {
+          return res.data;
+        }
+      } catch (e) {
+        // Ignore and try other sources
+      }
+    }
+    
+    // Check if this is an otakudesu path (format: "otakudesu-{slug}")
+    const otakudesuMatch = slug.match(/^otakudesu-(.+)$/);
+    if (otakudesuMatch) {
+      const [, animeSlug] = otakudesuMatch;
+      try {
+        const res = await api.get(`/anime/otakudesu/detail/${animeSlug}`);
         if (res.data?.data) {
           return res.data;
         }
@@ -141,11 +171,36 @@ export const animeApi = {
     }
     
     // Final fallback to kuramanime
-    const kuraRes = await api.get(`/anime/kuramanime/detail/${slug}`);
-    return kuraRes.data;
+    try {
+      const kuraRes = await api.get(`/anime/kuramanime/detail/${slug}`);
+      if (kuraRes.data?.data) {
+        return kuraRes.data;
+      }
+    } catch (e) {
+      // Ignore and try subnime
+    }
+    
+    // Last fallback to subnime
+    const subnimeRes = await api.get(`/anime/subnime/detail/${slug}`);
+    return subnimeRes.data;
   },
 
   getEpisode: async (episodeSlug: string, animeSlug?: string) => {
+    // Check if animeSlug indicates subnime format
+    if (animeSlug) {
+      const subnimeMatch = animeSlug.match(/^subnime-(.+)$/);
+      if (subnimeMatch) {
+        try {
+          const res = await api.get(`/anime/subnime/episode/${episodeSlug}`);
+          if (res.data?.data) {
+            return res.data;
+          }
+        } catch (e) {
+          console.error('Subnime episode error:', e);
+        }
+      }
+    }
+    
     // Check if animeSlug indicates kuramanime format
     if (animeSlug) {
       const kuramanimeMatch = animeSlug.match(/^kuramanime-(\d+)--(.+)$/);
@@ -174,12 +229,27 @@ export const animeApi = {
     }
     
     // Fallback to otakudesu
-    const otakuRes = await api.get(`/anime/otakudesu/episode/${episodeSlug}`);
-    return otakuRes.data;
+    try {
+      const otakuRes = await api.get(`/anime/otakudesu/episode/${episodeSlug}`);
+      if (otakuRes.data?.data) {
+        return otakuRes.data;
+      }
+    } catch (e) {
+      // Ignore and try subnime
+    }
+    
+    // Last fallback to subnime
+    const subnimeRes = await api.get(`/anime/subnime/episode/${episodeSlug}`);
+    return subnimeRes.data;
   },
 
   getServerStream: async (post: string, nume: string, type: string = 'video') => {
     const res = await api.post('/anime/stream', { post, nume, type });
+    return res.data;
+  },
+
+  getSchedule: async () => {
+    const res = await api.get('/anime/schedule');
     return res.data;
   },
 };

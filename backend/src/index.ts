@@ -21,6 +21,8 @@ let dbConnected = false;
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false, // Disabled to allow proxy embed player (subnime)
+  frameguard: false, // Disabled to allow iframe embedding from frontend
 }));
 
 // CORS configuration - allow all origins for now

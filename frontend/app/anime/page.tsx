@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { FiCalendar } from 'react-icons/fi';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
 import { animeApi } from '@/lib/api';
 import ContinueWatching from '@/components/shared/ContinueWatching';
@@ -117,9 +119,20 @@ export default function AnimePage() {
         <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
           Daftar <span className="gradient-text">Anime</span>
         </h1>
-        <p className="text-gray-400">
+        <p className="text-gray-400 mb-4">
           Koleksi anime subtitle Indonesia terlengkap dengan update terbaru
         </p>
+        
+        {/* Quick Filter Buttons */}
+        <div className="flex flex-wrap gap-3">
+          <Link
+            href="/anime/jadwal"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-yellow-500/30 rounded-lg text-yellow-400 hover:text-yellow-300 hover:border-yellow-500/50 transition-all"
+          >
+            <FiCalendar className="w-4 h-4" />
+            Jadwal Rilis
+          </Link>
+        </div>
       </div>
 
       {/* Continue Watching Section */}

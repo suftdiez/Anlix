@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { samehadaku, otakudesu, kuramanime } from '../scrapers';
+import { samehadaku, otakudesu, kuramanime, subnime } from '../scrapers';
 
 const router = Router();
 
@@ -173,6 +173,29 @@ router.post('/stream', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching stream:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch stream' });
+  }
+});
+
+// ============================================
+// SCHEDULE ROUTE
+// ============================================
+
+/**
+ * GET /api/anime/schedule
+ * Get anime release schedule (per day)
+ */
+router.get('/schedule', async (req: Request, res: Response) => {
+  try {
+    const schedule = await otakudesu.getSchedule();
+    
+    res.json({
+      success: true,
+      source: 'otakudesu',
+      data: schedule,
+    });
+  } catch (error) {
+    console.error('Error fetching anime schedule:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch schedule' });
   }
 });
 
@@ -504,6 +527,178 @@ router.get('/kuramanime/episode/:animeId/:episode', async (req: Request, res: Re
   } catch (error) {
     console.error('Error fetching episode from kuramanime:', error);
     res.status(500).json({ success: false, error: 'Failed to fetch episode' });
+  }
+});
+
+// ============================================
+// SUBNIME ROUTES - Fourth anime source (search-only supplement)
+// ============================================
+
+/**
+ * GET /api/anime/subnime/search
+ * Search anime on Subnime
+ */
+router.get('/subnime/search', async (req: Request, res: Response) => {
+  try {
+    const query = req.query.q as string;
+    const page = parseInt(req.query.page as string) || 1;
+    
+    if (!query) {
+      res.status(400).json({ success: false, error: 'Search query is required' });
+      return;
+    }
+
+    const result = await subnime.searchAnime(query, page);
+    
+    res.json({
+      success: true,
+      source: 'subnime',
+      query,
+      page,
+      hasNext: result.hasNext,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Error searching anime on subnime:', error);
+    res.status(500).json({ success: false, error: 'Failed to search anime' });
+  }
+});
+
+/**
+ * GET /api/anime/subnime/detail/:slug
+ * Get anime detail from Subnime
+ */
+router.get('/subnime/detail/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const result = await subnime.getAnimeDetail(slug);
+    
+    if (!result) {
+      res.status(404).json({ success: false, error: 'Anime not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      source: 'subnime',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching anime detail from subnime:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch anime detail' });
+  }
+});
+
+/**
+ * GET /api/anime/subnime/episode/:slug
+ * Get episode streaming data from Subnime
+ */
+router.get('/subnime/episode/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const result = await subnime.getEpisodeDetail(slug);
+    
+    if (!result) {
+      res.status(404).json({ success: false, error: 'Episode not found' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      source: 'subnime',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching episode from subnime:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch episode' });
+  }
+});
+
+/**
+ * GET /api/anime/subnime/genre/:genre
+ * Get anime by genre from Subnime
+ */
+router.get('/subnime/genre/:genre', async (req: Request, res: Response) => {
+  try {
+    const { genre } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await subnime.getAnimeByGenre(genre, page);
+    
+    res.json({
+      success: true,
+      source: 'subnime',
+      genre,
+      page,
+      hasNext: result.hasNext,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Error fetching anime by genre from subnime:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch anime' });
+  }
+});
+
+/**
+ * GET /api/anime/subnime/proxy
+ * Proxy for Subnime embed player URLs (bypasses Referer check)
+ */
+router.get('/subnime/proxy', async (req: Request, res: Response) => {
+  try {
+    const embedUrl = req.query.url as string;
+    if (!embedUrl) {
+      res.status(400).json({ success: false, error: 'Missing url parameter' });
+      return;
+    }
+
+    // Only allow proxying from known embed domains
+    const allowedDomains = ['subcrp.site', 'player.subnime.com', 'embed.subnime.com'];
+    let urlObj: URL;
+    try {
+      urlObj = new URL(embedUrl);
+    } catch {
+      res.status(400).json({ success: false, error: 'Invalid URL' });
+      return;
+    }
+    
+    if (!allowedDomains.some(d => urlObj.hostname.includes(d))) {
+      res.status(403).json({ success: false, error: 'Domain not allowed for proxy' });
+      return;
+    }
+
+    const axios = require('axios');
+    const response = await axios.get(embedUrl, {
+      headers: {
+        'Referer': 'https://subnime.com/',
+        'Origin': 'https://subnime.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      },
+      responseType: 'text',
+      timeout: 15000,
+    });
+
+    // Inject <base> tag so relative URLs (scripts, video streams) resolve to the original domain
+    const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+    let html = response.data as string;
+    if (html.includes('<head>')) {
+      html = html.replace('<head>', `<head><base href="${baseUrl}/">`);
+    } else if (html.includes('<HEAD>')) {
+      html = html.replace('<HEAD>', `<HEAD><base href="${baseUrl}/">`);
+    } else {
+      // Prepend base tag if no head tag found
+      html = `<base href="${baseUrl}/">` + html;
+    }
+
+    // Override helmet's CSP headers for this proxy route
+    // - Remove Content-Security-Policy to allow base-uri and frame-ancestors from any origin
+    // - Set permissive X-Frame-Options to allow embedding in frontend iframe
+    res.removeHeader('Content-Security-Policy');
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(html);
+  } catch (error) {
+    console.error('Error proxying subnime embed:', error);
+    res.status(500).json({ success: false, error: 'Failed to proxy embed' });
   }
 });
 
