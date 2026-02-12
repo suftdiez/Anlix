@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { getImageUrl } from '@/lib/utils';
 import { DetailSkeleton, EpisodeListSkeleton } from '@/components';
 import toast from 'react-hot-toast';
+import ContentReviews from '@/components/shared/ContentReviews';
 
 interface Episode {
   id: string;
@@ -281,6 +282,13 @@ export default function AnimeDetailPage() {
             </p>
           )}
         </motion.div>
+
+        {/* Reviews & Rating */}
+        <ContentReviews
+          contentId={slug as string}
+          contentType="anime"
+          contentTitle={anime.title}
+        />
       </div>
     </div>
   );

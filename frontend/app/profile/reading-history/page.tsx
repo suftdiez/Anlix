@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FiBook, FiTrash2, FiPlay, FiClock, FiImage } from 'react-icons/fi';
+import { FiBook, FiTrash2, FiPlay, FiClock, FiImage, FiMonitor } from 'react-icons/fi';
 import { userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
@@ -24,11 +24,130 @@ interface ReadingHistoryItem {
   novelPoster?: string;
 }
 
-type FilterType = 'all' | 'novel' | 'komik';
+interface WatchHistoryItem {
+  _id: string;
+  contentId: string;
+  contentType: 'anime' | 'donghua' | 'film';
+  episodeId: string;
+  episodeNumber: number;
+  title: string;
+  episodeTitle: string;
+  poster: string;
+  slug: string;
+  progress: number;
+  watchedAt: string;
+}
+
+// Unified history item for display
+interface UnifiedHistoryItem {
+  _id: string;
+  type: 'novel' | 'komik' | 'anime' | 'donghua' | 'film';
+  title: string;
+  poster: string;
+  slug: string;
+  subtitle: string; // chapter title or episode title
+  date: string;
+  progress?: number; // only for anime/donghua/film
+  detailLink: string;
+  continueLink: string;
+  source: 'reading' | 'watch';
+}
+
+type FilterType = 'all' | 'novel' | 'komik' | 'anime' | 'donghua';
+
+function normalizeReadingItem(item: ReadingHistoryItem): UnifiedHistoryItem {
+  const slug = item.contentSlug || item.novelSlug || '';
+  const title = item.contentTitle || item.novelTitle || 'Unknown';
+  const poster = item.contentPoster || item.novelPoster || '';
+  const type = item.contentType || 'novel';
+  
+  // Get chapter info
+  let subtitle = '';
+  if (item.chapterTitle) subtitle = item.chapterTitle;
+  else if (item.chapterNumber) subtitle = `Chapter ${item.chapterNumber}`;
+  else {
+    const match = item.chapterSlug?.match(/chapter[- ]?(\d+)/i);
+    if (match) subtitle = `Chapter ${match[1]}`;
+    else {
+      const numMatch = item.chapterSlug?.match(/(\d+)/);
+      if (numMatch) subtitle = `Chapter ${numMatch[1]}`;
+      else subtitle = item.chapterSlug || 'Unknown Chapter';
+    }
+  }
+  
+  const detailLink = type === 'komik' ? `/komik/${slug}` : `/novel/${slug}`;
+  const continueLink = type === 'komik' 
+    ? `/komik/baca/${item.chapterSlug}` 
+    : `/novel/baca/${slug}/${item.chapterSlug}`;
+
+  return {
+    _id: item._id,
+    type,
+    title,
+    poster,
+    slug,
+    subtitle,
+    date: item.readAt,
+    detailLink,
+    continueLink,
+    source: 'reading',
+  };
+}
+
+function normalizeWatchItem(item: WatchHistoryItem): UnifiedHistoryItem {
+  const type = item.contentType;
+  
+  let detailLink = '';
+  let continueLink = '';
+  if (type === 'anime') {
+    detailLink = `/anime/${item.slug}`;
+    continueLink = `/anime/${item.slug}/${item.episodeId}`;
+  } else if (type === 'donghua') {
+    detailLink = `/donghua/${item.slug}`;
+    continueLink = `/donghua/${item.slug}/${item.episodeId}`;
+  } else {
+    detailLink = `/film/${item.slug}`;
+    continueLink = `/film/${item.slug}`;
+  }
+  
+  const subtitle = type === 'film' 
+    ? (item.episodeTitle || 'Film') 
+    : `Episode ${item.episodeNumber}${item.episodeTitle ? ` - ${item.episodeTitle}` : ''}`;
+
+  return {
+    _id: item._id,
+    type,
+    title: item.title,
+    poster: item.poster || '',
+    slug: item.slug,
+    subtitle,
+    date: item.watchedAt,
+    progress: item.progress,
+    detailLink,
+    continueLink,
+    source: 'watch',
+  };
+}
+
+const FILTER_LABELS: Record<FilterType, string> = {
+  all: 'Semua',
+  anime: 'Anime',
+  donghua: 'Donghua',
+  novel: 'Novel',
+  komik: 'Komik',
+};
+
+const TYPE_BADGES: Record<string, { label: string; color: string }> = {
+  anime: { label: 'Anime', color: 'bg-red-600' },
+  donghua: { label: 'Donghua', color: 'bg-orange-600' },
+  novel: { label: 'Novel', color: 'bg-blue-600' },
+  komik: { label: 'Komik', color: 'bg-green-600' },
+  film: { label: 'Film', color: 'bg-purple-600' },
+};
 
 export default function ReadingHistoryPage() {
   const { isAuthenticated } = useAuth();
-  const [history, setHistory] = useState<ReadingHistoryItem[]>([]);
+  const [items, setItems] = useState<UnifiedHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -43,15 +162,52 @@ export default function ReadingHistoryPage() {
 
       setIsLoading(true);
       try {
-        // Fetch based on filter
-        const type = filter === 'all' ? undefined : filter;
-        const response = await userApi.getReadingHistory(page, 20, type);
-        if (response.success) {
-          setHistory(response.data);
-          setTotalPages(response.totalPages);
+        const isWatchFilter = filter === 'anime' || filter === 'donghua';
+        const isReadFilter = filter === 'novel' || filter === 'komik';
+
+        if (isWatchFilter) {
+          // Only fetch watch history for anime/donghua
+          const response = await userApi.getHistory(page, 20, filter as 'anime' | 'donghua');
+          if (response.success) {
+            const unified = (response.data || []).map(normalizeWatchItem);
+            setItems(unified);
+            setTotalPages(response.totalPages || 1);
+          }
+        } else if (isReadFilter) {
+          // Only fetch reading history for novel/komik
+          const response = await userApi.getReadingHistory(page, 20, filter as 'novel' | 'komik');
+          if (response.success) {
+            const unified = (response.data || []).map(normalizeReadingItem);
+            setItems(unified);
+            setTotalPages(response.totalPages || 1);
+          }
+        } else {
+          // Fetch both reading and watch history, then combine and sort
+          const [readingRes, watchRes] = await Promise.all([
+            userApi.getReadingHistory(1, 50).catch(() => ({ success: false, data: [] })),
+            userApi.getHistory(1, 50).catch(() => ({ success: false, data: [] })),
+          ]);
+          
+          const readingItems = readingRes.success 
+            ? (readingRes.data || []).map(normalizeReadingItem) 
+            : [];
+          const watchItems = watchRes.success 
+            ? (watchRes.data || []).map(normalizeWatchItem) 
+            : [];
+          
+          // Combine and sort by date (most recent first)
+          const combined = [...readingItems, ...watchItems].sort((a, b) => 
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+          );
+          
+          // Client-side pagination for combined view
+          const perPage = 20;
+          const totalItems = combined.length;
+          setTotalPages(Math.ceil(totalItems / perPage) || 1);
+          setItems(combined.slice((page - 1) * perPage, page * perPage));
         }
       } catch (error) {
-        console.error('Error fetching reading history:', error);
+        console.error('Error fetching history:', error);
       } finally {
         setIsLoading(false);
       }
@@ -59,10 +215,14 @@ export default function ReadingHistoryPage() {
     fetchHistory();
   }, [isAuthenticated, page, filter]);
 
-  const handleRemove = async (id: string) => {
+  const handleRemove = async (item: UnifiedHistoryItem) => {
     try {
-      await userApi.removeReadingHistory(id);
-      setHistory(prev => prev.filter(h => h._id !== id));
+      if (item.source === 'reading') {
+        await userApi.removeReadingHistory(item._id);
+      } else {
+        await userApi.removeHistory(item._id);
+      }
+      setItems(prev => prev.filter(h => h._id !== item._id));
       toast.success('Riwayat dihapus');
     } catch (error) {
       toast.error('Gagal menghapus riwayat');
@@ -70,11 +230,19 @@ export default function ReadingHistoryPage() {
   };
 
   const handleClearAll = async () => {
-    if (!confirm('Hapus semua riwayat baca?')) return;
+    if (!confirm('Hapus semua riwayat?')) return;
     try {
-      const type = filter === 'all' ? undefined : filter;
-      await userApi.clearReadingHistory(type);
-      setHistory([]);
+      const isWatchFilter = filter === 'anime' || filter === 'donghua';
+      const isReadFilter = filter === 'novel' || filter === 'komik';
+      
+      if (isWatchFilter || filter === 'all') {
+        await userApi.clearHistory().catch(() => {});
+      }
+      if (isReadFilter || filter === 'all') {
+        const readType = filter === 'all' ? undefined : (filter as 'novel' | 'komik');
+        await userApi.clearReadingHistory(readType).catch(() => {});
+      }
+      setItems([]);
       toast.success('Riwayat dihapus');
     } catch (error) {
       toast.error('Gagal menghapus riwayat');
@@ -85,49 +253,16 @@ export default function ReadingHistoryPage() {
     const date = new Date(dateString);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
-    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const mins = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
     
-    if (days === 0) return 'Hari ini';
+    if (mins < 1) return 'Baru saja';
+    if (mins < 60) return `${mins} menit lalu`;
+    if (hours < 24) return `${hours} jam lalu`;
     if (days === 1) return 'Kemarin';
     if (days < 7) return `${days} hari lalu`;
     return date.toLocaleDateString('id-ID');
-  };
-
-  // Helper to get correct field values (handle both old and new schema)
-  const getSlug = (item: ReadingHistoryItem) => item.contentSlug || item.novelSlug || '';
-  const getTitle = (item: ReadingHistoryItem) => item.contentTitle || item.novelTitle || 'Unknown';
-  const getPoster = (item: ReadingHistoryItem) => item.contentPoster || item.novelPoster || '';
-  const getType = (item: ReadingHistoryItem) => item.contentType || 'novel';
-
-  // Get link based on content type
-  const getDetailLink = (item: ReadingHistoryItem) => {
-    const slug = getSlug(item);
-    const type = getType(item);
-    return type === 'komik' ? `/komik/${slug}` : `/novel/${slug}`;
-  };
-
-  const getReadLink = (item: ReadingHistoryItem) => {
-    const slug = getSlug(item);
-    const type = getType(item);
-    return type === 'komik' 
-      ? `/komik/baca/${item.chapterSlug}` 
-      : `/novel/baca/${slug}/${item.chapterSlug}`;
-  };
-
-  // Get chapter info with fallback to extracting from chapterSlug
-  const getChapterInfo = (item: ReadingHistoryItem) => {
-    if (item.chapterTitle) return item.chapterTitle;
-    if (item.chapterNumber) return `Chapter ${item.chapterNumber}`;
-    
-    // Try to extract chapter number from chapterSlug
-    const match = item.chapterSlug?.match(/chapter[- ]?(\d+)/i);
-    if (match) return `Chapter ${match[1]}`;
-    
-    // Try to extract any number from the slug
-    const numMatch = item.chapterSlug?.match(/(\d+)/);
-    if (numMatch) return `Chapter ${numMatch[1]}`;
-    
-    return item.chapterSlug || 'Unknown Chapter';
   };
 
   if (!isAuthenticated) {
@@ -135,7 +270,7 @@ export default function ReadingHistoryPage() {
       <div className="container mx-auto px-4 py-20 text-center">
         <FiBook className="w-16 h-16 mx-auto text-gray-600 mb-4" />
         <h2 className="text-xl text-white mb-2">Silakan Login</h2>
-        <p className="text-gray-400 mb-4">Anda perlu login untuk melihat riwayat baca</p>
+        <p className="text-gray-400 mb-4">Anda perlu login untuk melihat riwayat</p>
         <Link href="/auth/login" className="text-primary hover:underline">
           Login Sekarang
         </Link>
@@ -150,13 +285,13 @@ export default function ReadingHistoryPage() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-white flex items-center gap-3">
             <FiClock className="w-8 h-8 text-primary" />
-            Riwayat Baca
+            Riwayat
           </h1>
           <p className="text-gray-400 mt-2">
-            Lanjutkan membaca dari terakhir kamu berhenti
+            Lanjutkan nonton dan baca dari terakhir kamu berhenti
           </p>
         </div>
-        {history.length > 0 && (
+        {items.length > 0 && (
           <button
             onClick={handleClearAll}
             className="px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-900/20 rounded-lg transition"
@@ -167,8 +302,8 @@ export default function ReadingHistoryPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6">
-        {(['all', 'novel', 'komik'] as FilterType[]).map((type) => (
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {(Object.keys(FILTER_LABELS) as FilterType[]).map((type) => (
           <button
             key={type}
             onClick={() => { setFilter(type); setPage(1); }}
@@ -178,7 +313,7 @@ export default function ReadingHistoryPage() {
                 : 'bg-gray-800 text-gray-400 hover:text-white'
             }`}
           >
-            {type === 'all' ? 'Semua' : type.charAt(0).toUpperCase() + type.slice(1)}
+            {FILTER_LABELS[type]}
           </button>
         ))}
       </div>
@@ -196,23 +331,24 @@ export default function ReadingHistoryPage() {
             </div>
           ))}
         </div>
-      ) : history.length > 0 ? (
+      ) : items.length > 0 ? (
         <div className="space-y-3">
-          {history.map((item) => (
+          {items.map((item) => (
             <div
-              key={item._id}
+              key={`${item.source}-${item._id}`}
               className="group flex gap-4 p-4 bg-gray-900 rounded-lg hover:bg-gray-800/80 transition"
             >
               {/* Poster */}
-              <Link href={getDetailLink(item)} className="flex-shrink-0">
+              <Link href={item.detailLink} className="flex-shrink-0">
                 <div className="relative w-16 h-24 rounded overflow-hidden bg-gray-800">
-                  {getPoster(item) ? (
+                  {item.poster ? (
                     <Image
-                      src={getPoster(item)}
-                      alt={getTitle(item)}
+                      src={item.poster}
+                      alt={item.title}
                       fill
                       className="object-cover"
                       sizes="64px"
+                      unoptimized
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -220,40 +356,61 @@ export default function ReadingHistoryPage() {
                     </div>
                   )}
                   {/* Type Badge */}
-                  <span className={`absolute top-1 left-1 px-1.5 py-0.5 text-[10px] font-medium rounded ${
-                    getType(item) === 'komik' ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+                  <span className={`absolute top-1 left-1 px-1.5 py-0.5 text-[10px] font-medium rounded text-white ${
+                    TYPE_BADGES[item.type]?.color || 'bg-gray-600'
                   }`}>
-                    {getType(item) === 'komik' ? 'Komik' : 'Novel'}
+                    {TYPE_BADGES[item.type]?.label || item.type}
                   </span>
+                  
+                  {/* Progress bar for anime/donghua */}
+                  {item.progress !== undefined && item.progress > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700">
+                      <div 
+                        className="h-full bg-primary"
+                        style={{ width: `${item.progress}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               </Link>
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <Link href={getDetailLink(item)}>
+                <Link href={item.detailLink}>
                   <h3 className="font-medium text-white line-clamp-1 hover:text-primary transition">
-                    {getTitle(item)}
+                    {item.title}
                   </h3>
                 </Link>
                 <p className="text-sm text-gray-400 mt-1">
-                  {getChapterInfo(item)}
+                  {item.subtitle}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatDate(item.readAt)}
-                </p>
+                <div className="flex items-center gap-3 mt-1">
+                  <p className="text-xs text-gray-500">
+                    {formatDate(item.date)}
+                  </p>
+                  {item.progress !== undefined && (
+                    <span className="text-xs text-primary font-medium">
+                      {item.progress}% selesai
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-2">
                 <Link
-                  href={getReadLink(item)}
+                  href={item.continueLink}
                   className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/80 transition text-sm"
                 >
-                  <FiPlay className="w-4 h-4" />
+                  {item.source === 'watch' ? (
+                    <FiMonitor className="w-4 h-4" />
+                  ) : (
+                    <FiPlay className="w-4 h-4" />
+                  )}
                   <span className="hidden sm:inline">Lanjutkan</span>
                 </Link>
                 <button
-                  onClick={() => handleRemove(item._id)}
+                  onClick={() => handleRemove(item)}
                   className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-900/20 rounded-lg transition opacity-0 group-hover:opacity-100"
                   title="Hapus"
                 >
@@ -268,10 +425,13 @@ export default function ReadingHistoryPage() {
           <FiBook className="w-16 h-16 mx-auto text-gray-600 mb-4" />
           <p className="text-gray-400">
             {filter === 'all' 
-              ? 'Belum ada riwayat baca. Mulai baca novel atau komik!' 
-              : `Belum ada riwayat baca ${filter}.`}
+              ? 'Belum ada riwayat. Mulai nonton anime atau baca novel/komik!' 
+              : `Belum ada riwayat ${FILTER_LABELS[filter]}.`}
           </p>
           <div className="flex justify-center gap-4 mt-4">
+            <Link href="/anime" className="text-red-400 hover:underline">
+              Jelajahi Anime
+            </Link>
             <Link href="/novel" className="text-primary hover:underline">
               Jelajahi Novel
             </Link>

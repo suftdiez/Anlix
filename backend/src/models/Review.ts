@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IReview extends Document {
   userId: mongoose.Types.ObjectId;
   contentId: string;
-  contentType: 'film';
+  contentType: 'film' | 'anime' | 'donghua';
   rating: number; // 1-5 stars
   content: string;
   likes: number;
@@ -26,7 +26,7 @@ const reviewSchema = new Schema<IReview>(
     },
     contentType: {
       type: String,
-      enum: ['film'],
+      enum: ['film', 'anime', 'donghua'],
       required: true,
       default: 'film',
     },

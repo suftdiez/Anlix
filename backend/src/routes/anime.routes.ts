@@ -46,6 +46,27 @@ router.get('/ongoing', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/anime/completed
+ * Get completed anime
+ */
+router.get('/completed', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await otakudesu.getCompleteAnime(page);
+    
+    res.json({
+      success: true,
+      page,
+      hasNext: result.hasNext,
+      data: result.data,
+    });
+  } catch (error) {
+    console.error('Error fetching completed anime:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch anime' });
+  }
+});
+
+/**
  * GET /api/anime/search
  * Search anime
  */

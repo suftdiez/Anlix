@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
-import { FiCalendar } from 'react-icons/fi';
-import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
+import { FiCalendar, FiPlay, FiCheckCircle, FiSearch, FiGrid, FiShuffle } from 'react-icons/fi';
+import { AnimeCard, Pagination, CardGridSkeleton, HeroCarousel, HeroSkeleton } from '@/components';
 import { animeApi } from '@/lib/api';
 import ContinueWatching from '@/components/shared/ContinueWatching';
 
@@ -22,9 +22,11 @@ const STORAGE_KEY = 'anlix_anime_seen';
 
 export default function AnimePage() {
   const [allAnime, setAllAnime] = useState<AnimeItem[]>([]);
+  const [heroItems, setHeroItems] = useState<(AnimeItem & { contentType: 'anime' })[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [heroLoading, setHeroLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Get seen slugs from sessionStorage
@@ -52,6 +54,27 @@ export default function AnimePage() {
   const clearSeenSlugs = useCallback(() => {
     if (typeof window === 'undefined') return;
     sessionStorage.removeItem(STORAGE_KEY);
+  }, []);
+
+  // Fetch hero items (ongoing anime for featured carousel)
+  useEffect(() => {
+    const fetchHero = async () => {
+      try {
+        const heroData = await animeApi.getOngoing(1);
+        const items = heroData.data || [];
+        
+        const heroes = items.slice(0, 5).map((item: AnimeItem) => ({
+          ...item,
+          contentType: 'anime' as const,
+        }));
+        setHeroItems(heroes);
+      } catch (err) {
+        console.error('Failed to fetch hero anime:', err);
+      } finally {
+        setHeroLoading(false);
+      }
+    };
+    fetchHero();
   }, []);
 
   useEffect(() => {
@@ -113,6 +136,14 @@ export default function AnimePage() {
   const displayItems = allAnime.slice(startIdx, startIdx + itemsPerPage);
 
   return (
+    <div className="min-h-screen">
+      {/* Hero Carousel */}
+      {heroLoading ? (
+        <HeroSkeleton />
+      ) : heroItems.length > 0 ? (
+        <HeroCarousel items={heroItems} />
+      ) : null}
+
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
@@ -125,6 +156,41 @@ export default function AnimePage() {
         
         {/* Quick Filter Buttons */}
         <div className="flex flex-wrap gap-3">
+          <Link
+            href="/anime/search"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiSearch className="w-4 h-4" />
+            Cari Anime
+          </Link>
+          <Link
+            href="/anime/genre"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-white/10 rounded-lg text-gray-300 hover:text-white hover:border-primary/50 transition-all"
+          >
+            <FiGrid className="w-4 h-4" />
+            Lihat Genre
+          </Link>
+          <Link
+            href="/anime/status/ongoing"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-green-500/30 rounded-lg text-green-400 hover:text-green-300 hover:border-green-500/50 transition-all"
+          >
+            <FiPlay className="w-4 h-4" />
+            Ongoing
+          </Link>
+          <Link
+            href="/anime/status/completed"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-blue-500/30 rounded-lg text-blue-400 hover:text-blue-300 hover:border-blue-500/50 transition-all"
+          >
+            <FiCheckCircle className="w-4 h-4" />
+            Completed
+          </Link>
+          <Link
+            href="/anime/random"
+            className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-purple-500/30 rounded-lg text-purple-400 hover:text-purple-300 hover:border-purple-500/50 transition-all"
+          >
+            <FiShuffle className="w-4 h-4" />
+            Random
+          </Link>
           <Link
             href="/anime/jadwal"
             className="flex items-center gap-2 px-4 py-2 bg-dark-card border border-yellow-500/30 rounded-lg text-yellow-400 hover:text-yellow-300 hover:border-yellow-500/50 transition-all"
@@ -175,6 +241,7 @@ export default function AnimePage() {
           />
         </>
       )}
+    </div>
     </div>
   );
 }

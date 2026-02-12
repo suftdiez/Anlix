@@ -71,6 +71,17 @@ export const animeApi = {
     return res.data;
   },
 
+  getCompleted: async (page = 1) => {
+    const res = await api.get(`/anime/completed?page=${page}`);
+    return res.data;
+  },
+
+  getByStatus: async (status: string, page = 1) => {
+    const endpoint = status === 'ongoing' ? 'ongoing' : 'completed';
+    const res = await api.get(`/anime/${endpoint}?page=${page}`);
+    return res.data;
+  },
+
   search: async (query: string, page = 1) => {
     // Search from samehadaku, otakudesu, kuramanime, and subnime sources
     const [samehadakuRes, otakudesuRes, kuramanimeRes, subnimeRes] = await Promise.all([
@@ -467,7 +478,7 @@ export const userApi = {
 
   addReview: async (data: {
     contentId: string;
-    contentType?: 'film';
+    contentType?: 'film' | 'anime' | 'donghua';
     rating: number;
     content: string;
   }) => {
