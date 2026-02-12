@@ -12,6 +12,7 @@ import { getImageUrl } from '@/lib/utils';
 import { DetailSkeleton, EpisodeListSkeleton } from '@/components';
 import toast from 'react-hot-toast';
 import ContentReviews from '@/components/shared/ContentReviews';
+import RelatedAnime from '@/components/shared/RelatedAnime';
 
 interface Episode {
   id: string;
@@ -288,6 +289,13 @@ export default function AnimeDetailPage() {
           contentId={slug as string}
           contentType="anime"
           contentTitle={anime.title}
+        />
+
+        {/* Related Anime */}
+        <RelatedAnime
+          currentSlug={slug}
+          genres={anime.genres}
+          title={anime.title}
         />
       </div>
     </div>
