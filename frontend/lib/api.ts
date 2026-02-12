@@ -117,6 +117,19 @@ export const animeApi = {
   },
 
   getDetail: async (slug: string) => {
+    // Helper to check if anime data is complete enough
+    const isDataComplete = (data: any): boolean => {
+      if (!data) return false;
+      // Data is considered complete if it has at least poster AND (synopsis OR episodes)
+      const hasPoster = !!data.poster;
+      const hasSynopsis = !!data.synopsis && data.synopsis !== 'Tidak ada sinopsis.';
+      const hasEpisodes = Array.isArray(data.episodes) && data.episodes.length > 0;
+      return hasPoster && (hasSynopsis || hasEpisodes);
+    };
+
+    // Store the best incomplete result as fallback 
+    let bestFallback: any = null;
+
     // Check if this is a subnime path (format: "subnime-{slug}")
     const subnimeMatch = slug.match(/^subnime-(.+)$/);
     if (subnimeMatch) {
@@ -124,7 +137,8 @@ export const animeApi = {
       try {
         const res = await api.get(`/anime/subnime/detail/${animeSlug}`);
         if (res.data?.data) {
-          return res.data;
+          if (isDataComplete(res.data.data)) return res.data;
+          if (!bestFallback) bestFallback = res.data;
         }
       } catch (e) {
         // Ignore and try other sources
@@ -136,11 +150,11 @@ export const animeApi = {
     
     if (kuramanimeMatch) {
       const [, id, animeSlug] = kuramanimeMatch;
-      // Direct kuramanime lookup using id/slug path format
       try {
         const res = await api.get(`/anime/kuramanime/detail/${id}/${animeSlug}`);
         if (res.data?.data) {
-          return res.data;
+          if (isDataComplete(res.data.data)) return res.data;
+          if (!bestFallback) bestFallback = res.data;
         }
       } catch (e) {
         // Ignore and try other sources
@@ -154,7 +168,8 @@ export const animeApi = {
       try {
         const res = await api.get(`/anime/otakudesu/detail/${animeSlug}`);
         if (res.data?.data) {
-          return res.data;
+          if (isDataComplete(res.data.data)) return res.data;
+          if (!bestFallback) bestFallback = res.data;
         }
       } catch (e) {
         // Ignore and try other sources
@@ -165,7 +180,8 @@ export const animeApi = {
     try {
       const res = await api.get(`/anime/detail/${slug}`);
       if (res.data?.data) {
-        return res.data;
+        if (isDataComplete(res.data.data)) return res.data;
+        if (!bestFallback) bestFallback = res.data;
       }
     } catch (e) {
       // Ignore and try otakudesu
@@ -175,7 +191,8 @@ export const animeApi = {
     try {
       const otakuRes = await api.get(`/anime/otakudesu/detail/${slug}`);
       if (otakuRes.data?.data) {
-        return otakuRes.data;
+        if (isDataComplete(otakuRes.data.data)) return otakuRes.data;
+        if (!bestFallback) bestFallback = otakuRes.data;
       }
     } catch (e) {
       // Ignore and try kuramanime
@@ -185,15 +202,29 @@ export const animeApi = {
     try {
       const kuraRes = await api.get(`/anime/kuramanime/detail/${slug}`);
       if (kuraRes.data?.data) {
-        return kuraRes.data;
+        if (isDataComplete(kuraRes.data.data)) return kuraRes.data;
+        if (!bestFallback) bestFallback = kuraRes.data;
       }
     } catch (e) {
       // Ignore and try subnime
     }
     
     // Last fallback to subnime
-    const subnimeRes = await api.get(`/anime/subnime/detail/${slug}`);
-    return subnimeRes.data;
+    try {
+      const subnimeRes = await api.get(`/anime/subnime/detail/${slug}`);
+      if (subnimeRes.data?.data) {
+        if (isDataComplete(subnimeRes.data.data)) return subnimeRes.data;
+        if (!bestFallback) bestFallback = subnimeRes.data;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Return the best incomplete result if no complete data found
+    if (bestFallback) return bestFallback;
+    
+    // Nothing found at all
+    throw new Error('Anime not found in any source');
   },
 
   getEpisode: async (episodeSlug: string, animeSlug?: string) => {
@@ -261,6 +292,11 @@ export const animeApi = {
 
   getSchedule: async () => {
     const res = await api.get('/anime/schedule');
+    return res.data;
+  },
+
+  getBatchDownloads: async (title: string) => {
+    const res = await api.get(`/anime/kusonime/batch/${encodeURIComponent(title)}`);
     return res.data;
   },
 };

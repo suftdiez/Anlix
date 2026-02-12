@@ -13,6 +13,7 @@ import { DetailSkeleton, EpisodeListSkeleton } from '@/components';
 import toast from 'react-hot-toast';
 import ContentReviews from '@/components/shared/ContentReviews';
 import RelatedAnime from '@/components/shared/RelatedAnime';
+import BatchDownload from '@/components/shared/BatchDownload';
 
 interface Episode {
   id: string;
@@ -283,6 +284,9 @@ export default function AnimeDetailPage() {
             </p>
           )}
         </motion.div>
+
+        {/* Batch Download from Kusonime */}
+        {anime.title && <BatchDownload animeTitle={anime.title} />}
 
         {/* Reviews & Rating */}
         <ContentReviews

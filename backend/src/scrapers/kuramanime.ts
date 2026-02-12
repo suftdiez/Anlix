@@ -447,6 +447,20 @@ export async function getAnimeDetail(id: string): Promise<AnimeDetail | null> {
   }
 }
 
+// Helper to extract quality from server name
+function extractQuality(serverName: string): string {
+  const name = serverName.toLowerCase();
+  if (name.includes('1080p') || name.includes('1080')) return '1080p';
+  if (name.includes('720p') || name.includes('720')) return '720p';
+  if (name.includes('480p') || name.includes('480')) return '480p';
+  if (name.includes('360p') || name.includes('360')) return '360p';
+  if (name.includes('4k') || name.includes('2160')) return '4K';
+  if (name.includes('full hd') || name.includes('fhd')) return '1080p';
+  if (name.includes('hd') && !name.includes('sd')) return '720p';
+  if (name.includes('sd')) return '480p';
+  return 'HD';
+}
+
 // Get episode detail with streaming servers using Puppeteer
 export async function getEpisodeDetail(animeId: string, episodeNum: string): Promise<EpisodeDetail | null> {
   const cacheKey = `kuramanime:episode:${animeId}:${episodeNum}`;
@@ -493,7 +507,7 @@ export async function getEpisodeDetail(animeId: string, episodeNum: string): Pro
       servers.push({
         name: 'Default Player',
         url: mainIframe.startsWith('//') ? `https:${mainIframe}` : mainIframe,
-        quality: 'HD',
+        quality: '720p',
       });
     }
 
@@ -560,10 +574,11 @@ export async function getEpisodeDetail(animeId: string, episodeNum: string): Pro
           !servers.some(s => s.url === newIframe);
         
         if (isValidVideo) {
+          const quality = extractQuality(serverOpt.name);
           servers.push({
             name: serverOpt.name,
             url: newIframe.startsWith('//') ? `https:${newIframe}` : newIframe,
-            quality: 'HD',
+            quality,
           });
         }
       } catch (e) {

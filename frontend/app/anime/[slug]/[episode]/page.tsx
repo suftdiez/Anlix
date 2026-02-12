@@ -4,10 +4,11 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { FiChevronLeft, FiChevronRight, FiHome, FiList, FiMessageCircle, FiRefreshCw } from 'react-icons/fi';
+import { FiChevronLeft, FiChevronRight, FiHome, FiList, FiRefreshCw } from 'react-icons/fi';
 import { animeApi, userApi } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
+import CommentsSection from '@/components/shared/CommentsSection';
 
 interface StreamServer {
   name: string;
@@ -287,39 +288,103 @@ export default function EpisodePage() {
       </motion.div>
 
       {/* Server Selection */}
-      {data.servers.length > 0 && (
-        <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-400 mb-2">
-            Pilih Server ({data.servers.length} tersedia):
-          </h3>
-          <div className="flex flex-wrap gap-2">
-            {data.servers.map((server, index) => (
-              <button
-                key={index}
-                onClick={() => handleServerChange(index)}
-                disabled={isLoadingServer}
-                className={`px-4 py-2 text-sm rounded-lg transition-all ${
-                  selectedServer === index
-                    ? 'bg-primary text-white'
-                    : 'bg-dark-card border border-white/10 text-gray-300 hover:border-primary/50'
-                } ${isLoadingServer ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {server.name}
-                {server.quality && (
-                  <span className="ml-1 text-xs opacity-70">({server.quality})</span>
-                )}
-                {/* Show indicator for AJAX-based servers */}
-                {server.post && server.nume && !server.url && (
-                  <span className="ml-1 text-xs text-yellow-400">•</span>
-                )}
-              </button>
-            ))}
+      {data.servers.length > 0 && (() => {
+        // Group servers by quality
+        const qualities = ['1080p', '720p', '480p', '360p', 'HD', '4K'];
+        const hasMultipleQualities = new Set(data.servers.map(s => s.quality || 'HD')).size > 1;
+        
+        const getQualityColor = (quality: string) => {
+          switch (quality) {
+            case '4K': return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+            case '1080p': return 'bg-green-500/20 text-green-400 border-green-500/30';
+            case '720p': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+            case '480p': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+            case '360p': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+            default: return 'bg-primary/20 text-primary border-primary/30';
+          }
+        };
+
+        return (
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-gray-400 mb-3">
+              Pilih Server ({data.servers.length} tersedia):
+            </h3>
+            
+            {hasMultipleQualities ? (
+              // Group by quality
+              <div className="space-y-3">
+                {qualities.map(quality => {
+                  const qualityServers = data.servers.filter(s => (s.quality || 'HD') === quality);
+                  if (qualityServers.length === 0) return null;
+                  
+                  return (
+                    <div key={quality}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`px-2 py-0.5 text-xs font-bold rounded border ${getQualityColor(quality)}`}>
+                          {quality}
+                        </span>
+                        <div className="flex-1 h-px bg-white/5" />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {qualityServers.map((server) => {
+                          const globalIndex = data.servers.indexOf(server);
+                          return (
+                            <button
+                              key={globalIndex}
+                              onClick={() => handleServerChange(globalIndex)}
+                              disabled={isLoadingServer}
+                              className={`px-4 py-2 text-sm rounded-lg transition-all ${
+                                selectedServer === globalIndex
+                                  ? 'bg-primary text-white'
+                                  : 'bg-dark-card border border-white/10 text-gray-300 hover:border-primary/50'
+                              } ${isLoadingServer ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                              {server.name}
+                              {server.post && server.nume && !server.url && (
+                                <span className="ml-1 text-xs text-yellow-400">•</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              // Flat list if only one quality
+              <div className="flex flex-wrap gap-2">
+                {data.servers.map((server, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleServerChange(index)}
+                    disabled={isLoadingServer}
+                    className={`px-4 py-2 text-sm rounded-lg transition-all ${
+                      selectedServer === index
+                        ? 'bg-primary text-white'
+                        : 'bg-dark-card border border-white/10 text-gray-300 hover:border-primary/50'
+                    } ${isLoadingServer ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {server.name}
+                    {server.quality && (
+                      <span className={`ml-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded ${getQualityColor(server.quality)}`}>
+                        {server.quality}
+                      </span>
+                    )}
+                    {server.post && server.nume && !server.url && (
+                      <span className="ml-1 text-xs text-yellow-400">•</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            <p className="text-xs text-gray-500 mt-2">
+              Tip: Jika server tidak berfungsi, coba pilih server lain.
+            </p>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Tip: Jika server tidak berfungsi, coba pilih server lain.
-          </p>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Navigation */}
       <div className="flex items-center justify-between gap-4 p-4 bg-dark-card rounded-xl border border-white/5">
@@ -358,16 +423,13 @@ export default function EpisodePage() {
         )}
       </div>
 
-      {/* Comments Section Placeholder */}
-      <div className="mt-8 p-6 bg-dark-card rounded-xl border border-white/5">
-        <h3 className="flex items-center gap-2 text-lg font-semibold text-white mb-4">
-          <FiMessageCircle className="w-5 h-5 text-primary" />
-          Komentar
-        </h3>
-        <p className="text-gray-500 text-center py-8">
-          Login untuk menambahkan komentar
-        </p>
-      </div>
+      {/* Comments Section */}
+      <CommentsSection
+        contentId={slug}
+        contentType="anime"
+        episodeId={episode}
+        episodeTitle={data.title}
+      />
     </div>
   );
 }

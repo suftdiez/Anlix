@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { samehadaku, otakudesu, kuramanime, subnime } from '../scrapers';
+import { samehadaku, otakudesu, kuramanime, subnime, kusonime } from '../scrapers';
 
 const router = Router();
 
@@ -720,6 +720,64 @@ router.get('/subnime/proxy', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error proxying subnime embed:', error);
     res.status(500).json({ success: false, error: 'Failed to proxy embed' });
+  }
+});
+
+// ============================================
+// KUSONIME ROUTES - Batch download source
+// ============================================
+
+/**
+ * GET /api/anime/kusonime/batch/:title
+ * Get batch download links from Kusonime by anime title
+ */
+router.get('/kusonime/batch/:title', async (req: Request, res: Response) => {
+  try {
+    const { title } = req.params;
+    const result = await kusonime.findBatchDownloads(decodeURIComponent(title));
+    
+    if (!result) {
+      res.json({
+        success: true,
+        source: 'kusonime',
+        data: null,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      source: 'kusonime',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error fetching batch downloads from kusonime:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch batch downloads' });
+  }
+});
+
+/**
+ * GET /api/anime/kusonime/search
+ * Search anime on Kusonime
+ */
+router.get('/kusonime/search', async (req: Request, res: Response) => {
+  try {
+    const query = req.query.q as string;
+    if (!query) {
+      res.status(400).json({ success: false, error: 'Query parameter q is required' });
+      return;
+    }
+
+    const results = await kusonime.searchAnime(query);
+    
+    res.json({
+      success: true,
+      source: 'kusonime',
+      data: results,
+    });
+  } catch (error) {
+    console.error('Error searching kusonime:', error);
+    res.status(500).json({ success: false, error: 'Failed to search kusonime' });
   }
 });
 
