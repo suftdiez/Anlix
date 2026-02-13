@@ -5,3 +5,4 @@ export * as otakudesu from './otakudesu';
 export * as kuramanime from './kuramanime';
 export * as subnime from './subnime';
 export * as kusonime from './kusonime';
+export * as rebahin from './rebahin';

@@ -1,0 +1,6 @@
+﻿M3U8 Status: 200 Length: 48054
+First segment proxy URL: http://localhost:5000/api/drama/rebahin/stream-proxy?url=https%3A%2F%2Fdaisy.groovy.monster%2Fstream
+\nFetching segment through proxy...
+Segment Status: 206
+Segment CT: video/mp4
+Segment Size: 10001

@@ -4,6 +4,7 @@ import convert from 'heic-convert';
 import * as melolo from '../services/melolo';
 import * as dramadash from '../services/dramadash';
 import * as dramaboxSansekai from '../services/dramabox-sansekai';
+import * as rebahin from '../scrapers/rebahin';
 
 const router = Router();
 
@@ -566,4 +567,365 @@ router.get('/dramabox-sansekai/episodes/:id', async (req: Request, res: Response
   }
 });
 
+// ============================================================
+// REBAHIN API ENDPOINTS (Chinese Drama Source)
+// ============================================================
+
+/**
+ * GET /api/drama/rebahin/latest
+ * Get Chinese drama listing from Rebahin
+ */
+router.get('/rebahin/latest', async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const result = await rebahin.getDramaChinaList(page);
+    console.log(`[Rebahin] Returning ${result.data.length} dramas (page ${page})`);
+    res.json({ success: true, data: result.data, hasNext: result.hasNext });
+  } catch (error) {
+    console.error('Error fetching Rebahin latest:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch Chinese dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/detail/:slug
+ * Get drama detail from Rebahin
+ */
+router.get('/rebahin/detail/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const detail = await rebahin.getDramaDetail(slug);
+    if (!detail) {
+      res.status(404).json({ success: false, error: 'Drama not found' });
+      return;
+    }
+    res.json({ success: true, data: detail });
+  } catch (error) {
+    console.error('Error fetching Rebahin detail:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch drama detail' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/episodes/:slug
+ * Get episodes with streaming URLs from Rebahin
+ */
+router.get('/rebahin/episodes/:slug', async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+    const result = await rebahin.getDramaEpisodes(slug);
+    if (!result) {
+      res.json({ success: true, data: { title: '', episodes: [] } });
+      return;
+    }
+    console.log(`[Rebahin] Returning ${result.episodes.length} episodes for ${slug}`);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching Rebahin episodes:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch episodes' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/search
+ * Search dramas on Rebahin
+ */
+router.get('/rebahin/search', async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      res.status(400).json({ success: false, error: 'Query parameter q is required' });
+      return;
+    }
+    const results = await rebahin.searchDrama(q);
+    console.log(`[Rebahin] Search "${q}" returned ${results.length} results`);
+    res.json({ success: true, data: results });
+  } catch (error) {
+    console.error('Error searching Rebahin:', error);
+    res.status(500).json({ success: false, error: 'Failed to search dramas' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/stream
+ * Extract actual video stream URL from an embed page by decoding JuicyCodes
+ * Query: ?url=<base64-encoded-embed-url>
+ */
+router.get('/rebahin/stream', async (req: Request, res: Response) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({ success: false, error: 'URL parameter is required' });
+      return;
+    }
+
+    // Decode the URL (passed as base64)
+    let embedUrl: string;
+    try {
+      embedUrl = Buffer.from(url, 'base64').toString('utf-8');
+    } catch {
+      embedUrl = url;
+    }
+
+    const streamInfo = await rebahin.getStreamUrl(embedUrl);
+    if (!streamInfo) {
+      res.status(404).json({ success: false, error: 'Could not extract stream URL' });
+      return;
+    }
+
+    res.json({ success: true, data: streamInfo });
+  } catch (error) {
+    console.error('Error extracting stream:', error);
+    res.status(500).json({ success: false, error: 'Failed to extract stream' });
+  }
+});
+
+/**
+/**
+ * GET /api/drama/rebahin/embed
+ * Serve an HLS video player that loads stream from our Puppeteer-based extraction endpoint.
+ * The stream is extracted using a real Chrome browser (Puppeteer) to bypass TLS fingerprint validation.
+ * Query: ?url=<base64-encoded-embed-url>
+ */
+router.get('/rebahin/embed', async (req: Request, res: Response) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({ success: false, error: 'URL parameter is required' });
+      return;
+    }
+
+    // Build the stream URL that will trigger Puppeteer extraction
+    const streamEndpoint = `${req.protocol}://${req.get('host')}/api/drama/rebahin/hls-stream?url=${encodeURIComponent(url)}`;
+
+    // Serve a minimal HTML page with HLS.js video player
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loading...</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
+    video { width: 100%; height: 100%; object-fit: contain; }
+    .loading { display: flex; align-items: center; justify-content: center; 
+               height: 100%; color: #999; font-family: system-ui; font-size: 16px; }
+    .loading .spinner { width: 32px; height: 32px; border: 3px solid #333; 
+                        border-top-color: #14b8a6; border-radius: 50%; 
+                        animation: spin 0.8s linear infinite; margin-right: 12px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #ef4444; text-align: center; padding: 20px; font-family: system-ui; }
+  </style>
+</head>
+<body>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <span>Memuat stream...</span>
+  </div>
+  <video id="video" controls style="display:none"></video>
+  <div id="error" class="error" style="display:none"></div>
+  <script>
+    (function() {
+      var video = document.getElementById('video');
+      var loading = document.getElementById('loading');
+      var errorDiv = document.getElementById('error');
+      var streamUrl = ${JSON.stringify(streamEndpoint)};
+      
+      function showError(msg) {
+        loading.style.display = 'none';
+        errorDiv.style.display = 'flex';
+        errorDiv.style.alignItems = 'center';
+        errorDiv.style.justifyContent = 'center';
+        errorDiv.style.height = '100%';
+        errorDiv.textContent = msg;
+      }
+      
+      function loadStream() {
+        if (Hls.isSupported()) {
+          var hls = new Hls({
+            debug: false,
+            enableWorker: true,
+            xhrSetup: function(xhr) {
+              xhr.withCredentials = false;
+            }
+          });
+          
+          hls.on(Hls.Events.MANIFEST_PARSED, function() {
+            loading.style.display = 'none';
+            video.style.display = 'block';
+            video.play().catch(function() {});
+          });
+          
+          hls.on(Hls.Events.ERROR, function(event, data) {
+            console.error('HLS error:', data);
+            if (data.fatal) {
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                showError('Gagal memuat stream. Coba refresh halaman.');
+              } else {
+                showError('Error: ' + (data.details || 'Unknown error'));
+              }
+            }
+          });
+          
+          hls.loadSource(streamUrl);
+          hls.attachMedia(video);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          // Safari native HLS support
+          video.src = streamUrl;
+          video.addEventListener('loadedmetadata', function() {
+            loading.style.display = 'none';
+            video.style.display = 'block';
+            video.play().catch(function() {});
+          });
+        } else {
+          showError('Browser tidak mendukung HLS playback');
+        }
+      }
+      
+      loadStream();
+    })();
+  </script>
+</body>
+</html>`;
+
+    res.set('Content-Type', 'text/html');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'no-cache');
+    res.send(html);
+  } catch (error: any) {
+    console.error('Error serving embed page:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to serve embed page' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/hls-stream
+ * Extract and serve the m3u8 playlist using Puppeteer.
+ * Segment URLs are rewritten to go through /stream-proxy.
+ * Query: ?url=<base64-encoded-embed-url>
+ */
+router.get('/rebahin/hls-stream', async (req: Request, res: Response) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      res.status(400).json({ success: false, error: 'URL parameter is required' });
+      return;
+    }
+
+    // Decode the URL (passed as base64)
+    let embedUrl: string;
+    try {
+      embedUrl = Buffer.from(url, 'base64').toString('utf-8');
+    } catch {
+      embedUrl = url;
+    }
+
+    const proxyBaseUrl = `${req.protocol}://${req.get('host')}/api/drama/rebahin/stream-proxy`;
+
+    // Import dynamically to avoid circular deps and load issues
+    const { extractStream } = require('../services/rebahinStream');
+    const result = await extractStream(embedUrl, proxyBaseUrl);
+
+    if (!result) {
+      res.status(502).json({ success: false, error: 'Failed to extract stream' });
+      return;
+    }
+
+    res.set('Content-Type', 'application/vnd.apple.mpegurl');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Headers', '*');
+    res.set('Cache-Control', 'no-cache');
+    res.send(result.m3u8Content);
+  } catch (error: any) {
+    console.error('Error extracting stream:', error.message);
+    res.status(500).json({ success: false, error: 'Stream extraction failed' });
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/stream-proxy
+ * Proxy stream segment/resource requests through Puppeteer's Chrome browser.
+ * This is needed because the CDN validates TLS fingerprints (JA3/JA4).
+ * Query: ?url=<target-url>
+ */
+router.get('/rebahin/stream-proxy', async (req: Request, res: Response) => {
+  try {
+    // Handle OPTIONS preflight
+    if (req.method === 'OPTIONS') {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Headers', '*');
+      res.set('Access-Control-Max-Age', '86400');
+      res.status(204).end();
+      return;
+    }
+
+    const targetUrl = req.query.url as string;
+    if (!targetUrl) {
+      res.status(400).send('Missing url parameter');
+      return;
+    }
+
+    const rangeHeader = req.headers.range;
+    
+    const { fetchStreamResource } = require('../services/rebahinStream');
+    const result = await fetchStreamResource(targetUrl, rangeHeader);
+
+    if (!result) {
+      res.status(502).send('Failed to fetch stream resource');
+      return;
+    }
+
+    // Set CORS headers
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Expose-Headers', '*');
+    
+    // Forward relevant headers from the upstream response
+    if (result.headers['content-type']) {
+      res.set('Content-Type', result.headers['content-type']);
+    }
+    if (result.headers['content-range']) {
+      res.set('Content-Range', result.headers['content-range']);
+    }
+    if (result.headers['content-length']) {
+      res.set('Content-Length', result.headers['content-length']);
+    }
+    res.set('Accept-Ranges', 'bytes');
+
+    res.status(result.status).send(result.data);
+  } catch (error: any) {
+    console.error('Stream proxy error:', error.message);
+    res.status(502).send('Proxy error');
+  }
+});
+
+/**
+ * GET /api/drama/rebahin/cors-proxy (kept for backwards compatibility)
+ * Now redirects to stream-proxy
+ */
+router.all('/rebahin/cors-proxy', async (req: Request, res: Response) => {
+  // Handle OPTIONS preflight
+  if (req.method === 'OPTIONS') {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', '*');
+    res.set('Access-Control-Max-Age', '86400');
+    res.status(204).end();
+    return;
+  }
+  
+  const targetUrl = req.query.url as string;
+  if (!targetUrl) {
+    res.status(400).send('Missing url parameter');
+    return;
+  }
+
+  // Forward to stream-proxy
+  res.redirect(`/api/drama/rebahin/stream-proxy?url=${encodeURIComponent(targetUrl)}`);
+});
+
 export default router;
+
+

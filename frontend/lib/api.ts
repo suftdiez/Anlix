@@ -642,6 +642,40 @@ export const dramaboxSansekaiApi = {
   },
 };
 
+// ============ REBAHIN API (Chinese Drama Source) ============
+export const rebahinApi = {
+  getLatest: async (page = 1) => {
+    const res = await api.get(`/drama/rebahin/latest?page=${page}`);
+    return res.data;
+  },
+
+  getDetail: async (slug: string) => {
+    const res = await api.get(`/drama/rebahin/detail/${slug}`);
+    return res.data;
+  },
+
+  getEpisodes: async (slug: string) => {
+    const res = await api.get(`/drama/rebahin/episodes/${slug}`);
+    return res.data;
+  },
+
+  search: async (query: string) => {
+    const res = await api.get(`/drama/rebahin/search?q=${encodeURIComponent(query)}`);
+    return res.data;
+  },
+
+  getStreamUrl: async (embedUrl: string) => {
+    const encoded = btoa(embedUrl);
+    const res = await api.get(`/drama/rebahin/stream?url=${encodeURIComponent(encoded)}`);
+    return res.data;
+  },
+
+  getCorsProxyUrl: (targetUrl: string, referer: string = 'https://rebahinxxi3.work/') => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    return `${baseUrl}/api/drama/rebahin/cors-proxy?url=${encodeURIComponent(targetUrl)}&referer=${encodeURIComponent(referer)}`;
+  },
+};
+
 // ============ FILM API (LK21) ============
 export const filmApi = {
   getLatest: async (page = 1) => {

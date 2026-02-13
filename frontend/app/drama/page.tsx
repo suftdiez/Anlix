@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { FiHome, FiFilm, FiTrendingUp, FiMic, FiLayers, FiChevronRight, FiPlay, FiLoader } from 'react-icons/fi';
-import { dramaApi, dramaboxApi, dramaboxSansekaiApi } from '@/lib/api';
+import { dramaApi, dramaboxApi, dramaboxSansekaiApi, rebahinApi } from '@/lib/api';
 import { CardSkeleton } from '@/components/ui/Skeletons';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -19,10 +19,10 @@ interface DramaItem {
   episodeCount?: number;
   categories?: string[];
   playCount?: string;
-  source: 'melolo' | 'dramabox' | 'dramabox-sansekai';
+  source: 'melolo' | 'dramabox' | 'dramabox-sansekai' | 'rebahin';
 }
 
-type TabType = 'all' | 'dramabox' | 'dramabox-sansekai' | 'melolo';
+type TabType = 'all' | 'dramabox' | 'dramabox-sansekai' | 'melolo' | 'rebahin';
 
 // Helper to get Melolo image proxy URL - only proxy if not already proxied
 function getMeloloImageUrl(url: string): string {
@@ -47,6 +47,9 @@ export default function DramaPage() {
   const [allDramaboxDramas, setAllDramaboxDramas] = useState<DramaItem[]>([]);
   const [displayCount, setDisplayCount] = useState(30);
   const [hasMore, setHasMore] = useState(true);
+  // Rebahin server-side pagination tracking
+  const [rebahinPage, setRebahinPage] = useState(1);
+  const [rebahinHasNext, setRebahinHasNext] = useState(true);
 
   // Fetch dramas on tab change
   useEffect(() => {
@@ -61,11 +64,12 @@ export default function DramaPage() {
 
         switch (activeTab) {
           case 'all':
-            // Fetch from ALL THREE APIs and merge
+            // Fetch from ALL FOUR APIs and merge
             const [
               meloloLatest, meloloTrending, 
               dbLatest, dbTrending, dbForYou,
-              sbLatest, sbTrending, sbDubindo
+              sbLatest, sbTrending, sbDubindo,
+              rbP1, rbP2, rbP3
             ] = await Promise.all([
               dramaApi.getLatest().catch(() => ({ data: [] })),
               dramaApi.getTrending().catch(() => ({ data: [] })),
@@ -75,6 +79,9 @@ export default function DramaPage() {
               dramaboxSansekaiApi.getLatest().catch(() => ({ data: [] })),
               dramaboxSansekaiApi.getTrending().catch(() => ({ data: [] })),
               dramaboxSansekaiApi.getDubindo('terpopuler', 1).catch(() => ({ data: [] })),
+              rebahinApi.getLatest(1).catch(() => ({ data: [], hasNext: false })),
+              rebahinApi.getLatest(2).catch(() => ({ data: [], hasNext: false })),
+              rebahinApi.getLatest(3).catch(() => ({ data: [], hasNext: false })),
             ]);
 
             // Add Melolo dramas with source tag and proxied images
@@ -104,12 +111,24 @@ export default function DramaPage() {
               source: 'dramabox-sansekai' as const,
             }));
 
+            // Add Rebahin dramas with source tag (3 pages)
+            const rebahinDramas = [
+              ...(rbP1.data || []),
+              ...(rbP2.data || []),
+              ...(rbP3.data || []),
+            ].map((d: any) => ({
+              ...d,
+              title: d.title || '',
+              poster: d.poster || '',
+              source: 'rebahin' as const,
+            }));
+
             // Save all for "load more"
             setAllDramaboxDramas([...dramaboxDramas, ...sansekaiDramas]);
 
-            // Merge and dedupe by title (sansekai first, then dramabox, then melolo)
+            // Merge and dedupe by title
             const mergedMap = new Map<string, DramaItem>();
-            [...sansekaiDramas, ...dramaboxDramas, ...meloloDramas].forEach(d => {
+            [...rebahinDramas, ...sansekaiDramas, ...dramaboxDramas, ...meloloDramas].forEach(d => {
               if (d.title && !mergedMap.has(d.title)) {
                 mergedMap.set(d.title, d);
               }
@@ -204,6 +223,34 @@ export default function DramaPage() {
             });
             allDramas = Array.from(meloloMap.values());
             break;
+
+          case 'rebahin':
+            // Fetch first 3 pages in parallel for initial load
+            const [rbPage1, rbPage2, rbPage3] = await Promise.all([
+              rebahinApi.getLatest(1).catch(() => ({ data: [], hasNext: false })),
+              rebahinApi.getLatest(2).catch(() => ({ data: [], hasNext: false })),
+              rebahinApi.getLatest(3).catch(() => ({ data: [], hasNext: false })),
+            ]);
+            allDramas = [
+              ...(rbPage1.data || []),
+              ...(rbPage2.data || []),
+              ...(rbPage3.data || []),
+            ].map((d: any) => ({
+              ...d,
+              title: d.title || '',
+              poster: d.poster || '',
+              source: 'rebahin' as const,
+            }));
+            // Dedupe by slug/id
+            const rbSeen = new Set<string>();
+            allDramas = allDramas.filter(d => {
+              if (rbSeen.has(d.id)) return false;
+              rbSeen.add(d.id);
+              return true;
+            });
+            setRebahinPage(3);
+            setRebahinHasNext(rbPage3.hasNext !== false);
+            break;
         }
 
         setDramas(allDramas);
@@ -219,25 +266,51 @@ export default function DramaPage() {
     fetchDramas();
   }, [activeTab]);
 
-  // Load more function - just show more from already loaded dramas
-  const loadMore = useCallback(() => {
+  // Load more function - for Rebahin, fetch next page from API
+  const loadMore = useCallback(async () => {
     if (isLoadingMore) return;
     
     setIsLoadingMore(true);
     
-    // Simulate loading delay
-    setTimeout(() => {
+    if (activeTab === 'rebahin' && rebahinHasNext) {
+      // Fetch next page from Rebahin API
+      try {
+        const nextPage = rebahinPage + 1;
+        const result = await rebahinApi.getLatest(nextPage).catch(() => ({ data: [], hasNext: false }));
+        const newDramas = (result.data || []).map((d: any) => ({
+          ...d,
+          title: d.title || '',
+          poster: d.poster || '',
+          source: 'rebahin' as const,
+        }));
+        
+        if (newDramas.length > 0) {
+          setDramas(prev => {
+            const existingIds = new Set(prev.map(d => d.id));
+            const unique = newDramas.filter((d: DramaItem) => !existingIds.has(d.id));
+            return [...prev, ...unique];
+          });
+          setDisplayCount(prev => prev + 30);
+        }
+        
+        setRebahinPage(nextPage);
+        setRebahinHasNext(result.hasNext !== false && newDramas.length > 0);
+        setHasMore(result.hasNext !== false && newDramas.length > 0);
+      } catch (error) {
+        console.error('Failed to load more Rebahin dramas:', error);
+      }
+    } else {
+      // For other tabs, just reveal more from already-loaded data
       const newCount = displayCount + 30;
       setDisplayCount(newCount);
       
-      // Check if no more dramas to show
       if (newCount >= dramas.length) {
         setHasMore(false);
       }
-      
-      setIsLoadingMore(false);
-    }, 500);
-  }, [displayCount, dramas.length, isLoadingMore]);
+    }
+    
+    setIsLoadingMore(false);
+  }, [activeTab, displayCount, dramas.length, isLoadingMore, rebahinPage, rebahinHasNext]);
 
   // Get visible dramas based on displayCount
   const visibleDramas = dramas.slice(0, displayCount);
@@ -252,6 +325,9 @@ export default function DramaPage() {
 
   // Build detail URL with data
   const getDetailUrl = (drama: DramaItem) => {
+    if (drama.source === 'rebahin') {
+      return `/drama/rebahin/${drama.id}`;
+    }
     if (drama.source === 'melolo') {
       return `/drama/${drama.id}`;
     }
@@ -334,6 +410,17 @@ export default function DramaPage() {
           <FiMic className="w-4 h-4" />
           Melolo ({activeTab === 'melolo' ? dramas.length : '...'})
         </button>
+        <button
+          onClick={() => setActiveTab('rebahin')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
+            activeTab === 'rebahin'
+              ? 'bg-teal-500 text-white'
+              : 'bg-dark-card text-gray-400 hover:text-white'
+          }`}
+        >
+          <FiFilm className="w-4 h-4" />
+          Rebahin ({activeTab === 'rebahin' ? dramas.length : '...'})
+        </button>
       </div>
 
       {/* Drama Grid */}
@@ -373,17 +460,21 @@ export default function DramaPage() {
                       )}
                       {/* Source badge */}
                       <div className={`absolute top-2 left-2 px-2 py-1 text-white text-xs rounded-md font-medium ${
-                        drama.source === 'melolo' 
-                          ? 'bg-purple-500/90' 
-                          : drama.source === 'dramabox-sansekai' 
-                            ? 'bg-orange-500/90' 
-                            : 'bg-pink-500/90'
+                        drama.source === 'rebahin'
+                          ? 'bg-teal-500/90'
+                          : drama.source === 'melolo' 
+                            ? 'bg-purple-500/90' 
+                            : drama.source === 'dramabox-sansekai' 
+                              ? 'bg-orange-500/90' 
+                              : 'bg-pink-500/90'
                       }`}>
-                        {drama.source === 'melolo' 
-                          ? 'Melolo' 
-                          : drama.source === 'dramabox-sansekai' 
-                            ? 'DramaBox' 
-                            : 'DramaDash'}
+                        {drama.source === 'rebahin'
+                          ? 'Rebahin'
+                          : drama.source === 'melolo' 
+                            ? 'Melolo' 
+                            : drama.source === 'dramabox-sansekai' 
+                              ? 'DramaBox' 
+                              : 'DramaDash'}
                       </div>
                       {/* Episode badge */}
                       {drama.episodeCount && drama.episodeCount > 0 && (
