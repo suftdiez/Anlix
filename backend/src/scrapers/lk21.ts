@@ -1,3 +1,5 @@
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
@@ -1004,7 +1006,7 @@ export async function getSeriesUpdate(): Promise<{ data: FilmItem[]; hasNext: bo
 
     // If we found the section, extract series from it
     if (seriesUpdateSection) {
-      seriesUpdateSection.find('a').each((_, el) => {
+      seriesUpdateSection.find('a').each((_i: number, el: any) => {
         const $el = $(el);
         const $img = $el.find('img');
         
@@ -1452,7 +1454,7 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
 
     console.log(`[LK21] Final: ${seasons.length} seasons, ${episodes.length} episodes`);
     
-    await setCache(cacheKey, detail, 1800);
+    await setCache(cacheKey, detail);
     return detail;
   } catch (error) {
     console.error('[LK21] Error fetching series detail:', error);
