@@ -313,11 +313,6 @@ export const donghuaApi = {
     return res.data;
   },
 
-  getPopular: async () => {
-    const res = await api.get('/donghua/popular');
-    return res.data;
-  },
-
   search: async (query: string, page = 1) => {
     const res = await api.get(`/donghua/search?q=${encodeURIComponent(query)}&page=${page}`);
     return res.data;
