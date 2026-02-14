@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';

@@ -8,7 +8,5 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.10.0
-      - key: PUPPETEER_SKIP_CHROMIUM_DOWNLOAD
-        value: true
-      - key: CHROME_BIN
-        value: /usr/bin/google-chrome-stable
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/.cache/puppeteer
