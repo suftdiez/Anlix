@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { FiSearch, FiPlay } from 'react-icons/fi';
 import { AnimeCard, Pagination, CardGridSkeleton } from '@/components';
-import { animeApi, donghuaApi, dramaboxApi } from '@/lib/api';
+import { animeApi, donghuaApi, dramaboxApi, rebahinApi } from '@/lib/api';
 
 interface ContentItem {
   id: string;
@@ -28,6 +28,7 @@ interface DramaItem {
   abstract?: string;
   episodeCount?: number;
   categories?: string[];
+  source?: 'dramabox' | 'rebahin';
 }
 
 function SearchContent() {
@@ -50,17 +51,27 @@ function SearchContent() {
     const search = async () => {
       setIsLoading(true);
       try {
-        const [animeData, donghuaData, dramaData] = await Promise.all([
+        const [animeData, donghuaData, dramaData, rebahinData] = await Promise.all([
           animeApi.search(query, animePage),
           donghuaApi.search(query, donghuaPage),
           dramaboxApi.search(query).catch(() => ({ data: [] })),
+          rebahinApi.search(query).catch(() => ({ data: [] })),
         ]);
 
         setAnimeResults(animeData.data || []);
         setAnimeHasNext(animeData.hasNext || false);
         setDonghuaResults(donghuaData.data || []);
         setDonghuaHasNext(donghuaData.hasNext || false);
-        setDramaResults(dramaData.data || []);
+        
+        // Merge DramaBox + Rebahin results
+        const dramaboxResults = (dramaData.data || []).map((d: any) => ({ ...d, source: 'dramabox' as const }));
+        const rebahinResults = (rebahinData.data || []).map((d: any) => ({
+          id: d.id || d.slug,
+          title: d.title || '',
+          poster: d.poster || '',
+          source: 'rebahin' as const,
+        }));
+        setDramaResults([...dramaboxResults, ...rebahinResults]);
       } catch (error) {
         console.error('Search failed:', error);
       } finally {
@@ -78,6 +89,9 @@ function SearchContent() {
 
   // Build drama detail URL with data
   const getDramaDetailUrl = (drama: DramaItem) => {
+    if (drama.source === 'rebahin') {
+      return `/drama/rebahin/${drama.id}`;
+    }
     const params = new URLSearchParams({
       title: drama.title,
       poster: drama.poster,
@@ -175,12 +189,16 @@ function SearchContent() {
                               className="object-cover group-hover:scale-105 transition-transform duration-300"
                               sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 16vw"
                             />
-                            {/* Episode badge */}
-                            {drama.episodeCount && drama.episodeCount > 0 && (
+                            {/* Source badge */}
+                            {drama.source === 'rebahin' ? (
+                              <div className="absolute top-2 left-2 px-2 py-1 bg-teal-500/90 text-white text-xs rounded-md font-medium">
+                                Rebahin
+                              </div>
+                            ) : drama.episodeCount && drama.episodeCount > 0 ? (
                               <div className="absolute top-2 right-2 px-2 py-1 bg-pink-500/90 text-white text-xs rounded-md font-medium">
                                 {drama.episodeCount} Eps
                               </div>
-                            )}
+                            ) : null}
                             {/* Gradient overlay */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                           </div>

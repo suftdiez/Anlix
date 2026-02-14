@@ -710,43 +710,88 @@ router.get('/rebahin/embed', async (req: Request, res: Response) => {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #000; overflow: hidden; }
     video { width: 100%; height: 100%; object-fit: contain; }
-    .loading { display: flex; align-items: center; justify-content: center; 
-               height: 100%; color: #999; font-family: system-ui; font-size: 16px; }
+    .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; 
+               height: 100%; color: #999; font-family: system-ui; font-size: 14px; gap: 12px; }
     .loading .spinner { width: 32px; height: 32px; border: 3px solid #333; 
                         border-top-color: #14b8a6; border-radius: 50%; 
-                        animation: spin 0.8s linear infinite; margin-right: 12px; }
+                        animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .error { color: #ef4444; text-align: center; padding: 20px; font-family: system-ui; }
+    .error { display: flex; flex-direction: column; align-items: center; justify-content: center;
+             height: 100%; color: #ef4444; font-family: system-ui; font-size: 14px; gap: 12px; }
+    .retry-btn { padding: 8px 20px; background: #14b8a6; color: white; border: none; 
+                 border-radius: 8px; font-size: 14px; cursor: pointer; font-family: system-ui; }
+    .retry-btn:hover { background: #0d9488; }
+    .status { color: #666; font-size: 12px; }
   </style>
 </head>
 <body>
   <div id="loading" class="loading">
     <div class="spinner"></div>
-    <span>Memuat stream...</span>
+    <span id="loadingText">Memuat stream...</span>
+    <span class="status" id="statusText"></span>
   </div>
   <video id="video" controls style="display:none"></video>
-  <div id="error" class="error" style="display:none"></div>
+  <div id="error" class="error" style="display:none">
+    <span id="errorText"></span>
+    <button class="retry-btn" onclick="retryLoad()">🔄 Coba Lagi</button>
+  </div>
   <script>
     (function() {
       var video = document.getElementById('video');
       var loading = document.getElementById('loading');
+      var loadingText = document.getElementById('loadingText');
+      var statusText = document.getElementById('statusText');
       var errorDiv = document.getElementById('error');
+      var errorText = document.getElementById('errorText');
       var streamUrl = ${JSON.stringify(streamEndpoint)};
+      var maxRetries = 3;
+      var attempt = 0;
+      var hls = null;
       
       function showError(msg) {
         loading.style.display = 'none';
+        video.style.display = 'none';
         errorDiv.style.display = 'flex';
-        errorDiv.style.alignItems = 'center';
-        errorDiv.style.justifyContent = 'center';
-        errorDiv.style.height = '100%';
-        errorDiv.textContent = msg;
+        errorText.textContent = msg;
       }
       
+      function showLoading(msg, status) {
+        errorDiv.style.display = 'none';
+        video.style.display = 'none';
+        loading.style.display = 'flex';
+        loadingText.textContent = msg || 'Memuat stream...';
+        statusText.textContent = status || '';
+      }
+      
+      window.retryLoad = function() {
+        attempt = 0;
+        loadStream();
+      };
+      
       function loadStream() {
+        attempt++;
+        
+        if (attempt > 1) {
+          showLoading('Memuat ulang stream...', 'Percobaan ' + attempt + '/' + maxRetries);
+        } else {
+          showLoading('Memuat stream...', 'Mengekstrak video dari server...');
+        }
+        
+        // Clean up previous HLS instance
+        if (hls) {
+          hls.destroy();
+          hls = null;
+        }
+        
         if (Hls.isSupported()) {
-          var hls = new Hls({
+          hls = new Hls({
             debug: false,
             enableWorker: true,
+            manifestLoadingTimeOut: 60000,
+            manifestLoadingMaxRetry: 2,
+            manifestLoadingRetryDelay: 2000,
+            levelLoadingTimeOut: 60000,
+            fragLoadingTimeOut: 30000,
             xhrSetup: function(xhr) {
               xhr.withCredentials = false;
             }
@@ -754,6 +799,7 @@ router.get('/rebahin/embed', async (req: Request, res: Response) => {
           
           hls.on(Hls.Events.MANIFEST_PARSED, function() {
             loading.style.display = 'none';
+            errorDiv.style.display = 'none';
             video.style.display = 'block';
             video.play().catch(function() {});
           });
@@ -761,18 +807,23 @@ router.get('/rebahin/embed', async (req: Request, res: Response) => {
           hls.on(Hls.Events.ERROR, function(event, data) {
             console.error('HLS error:', data);
             if (data.fatal) {
-              if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-                showError('Gagal memuat stream. Coba refresh halaman.');
+              hls.destroy();
+              hls = null;
+              if (attempt < maxRetries) {
+                var waitSec = attempt * 3;
+                showLoading('Stream gagal, mencoba lagi...', 'Menunggu ' + waitSec + ' detik...');
+                setTimeout(loadStream, waitSec * 1000);
               } else {
-                showError('Error: ' + (data.details || 'Unknown error'));
+                showError('Gagal memuat stream setelah ' + maxRetries + ' percobaan.');
               }
             }
           });
           
-          hls.loadSource(streamUrl);
+          // Add cache-busting to force fresh extraction on retry
+          var urlToLoad = attempt > 1 ? streamUrl + '&retry=' + attempt + '&t=' + Date.now() : streamUrl;
+          hls.loadSource(urlToLoad);
           hls.attachMedia(video);
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          // Safari native HLS support
           video.src = streamUrl;
           video.addEventListener('loadedmetadata', function() {
             loading.style.display = 'none';
@@ -808,7 +859,7 @@ router.get('/rebahin/embed', async (req: Request, res: Response) => {
  */
 router.get('/rebahin/hls-stream', async (req: Request, res: Response) => {
   try {
-    const { url } = req.query;
+    const { url, retry } = req.query;
     if (!url || typeof url !== 'string') {
       res.status(400).json({ success: false, error: 'URL parameter is required' });
       return;
@@ -825,7 +876,14 @@ router.get('/rebahin/hls-stream', async (req: Request, res: Response) => {
     const proxyBaseUrl = `${req.protocol}://${req.get('host')}/api/drama/rebahin/stream-proxy`;
 
     // Import dynamically to avoid circular deps and load issues
-    const { extractStream } = require('../services/rebahinStream');
+    const { extractStream, invalidateSession } = require('../services/rebahinStream');
+    
+    // On retry, invalidate the cached session to force fresh extraction
+    if (retry) {
+      console.log(`[HLS-Stream] Retry attempt ${retry}, invalidating session for fresh extraction`);
+      invalidateSession(embedUrl);
+    }
+    
     const result = await extractStream(embedUrl, proxyBaseUrl);
 
     if (!result) {

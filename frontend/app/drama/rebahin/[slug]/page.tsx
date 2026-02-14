@@ -89,10 +89,42 @@ export default function RebahinDetailPage() {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
         <FiFilm className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-        <p className="text-gray-400 text-lg">{error || 'Drama tidak ditemukan'}</p>
-        <Link href="/drama" className="text-teal-400 hover:text-teal-300 mt-4 inline-block">
-          ← Kembali ke Drama
-        </Link>
+        <p className="text-gray-400 text-lg mb-4">{error || 'Drama tidak ditemukan'}</p>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={() => {
+              setError('');
+              setIsLoading(true);
+              const retry = async () => {
+                try {
+                  const [detailRes, episodesRes] = await Promise.all([
+                    rebahinApi.getDetail(slug),
+                    rebahinApi.getEpisodes(slug),
+                  ]);
+                  if (detailRes.success && detailRes.data) {
+                    setDetail(detailRes.data);
+                  } else {
+                    setError('Drama tidak ditemukan');
+                  }
+                  if (episodesRes.success && episodesRes.data?.episodes) {
+                    setEpisodes(episodesRes.data.episodes);
+                  }
+                } catch (err) {
+                  setError('Gagal memuat data drama. Coba lagi.');
+                } finally {
+                  setIsLoading(false);
+                }
+              };
+              retry();
+            }}
+            className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-all font-medium"
+          >
+            🔄 Coba Lagi
+          </button>
+          <Link href="/drama" className="px-4 py-2 bg-dark-card border border-white/10 text-gray-300 hover:text-white rounded-lg transition-all">
+            ← Kembali ke Drama
+          </Link>
+        </div>
       </div>
     );
   }

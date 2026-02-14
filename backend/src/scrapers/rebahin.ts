@@ -11,7 +11,7 @@ const memoryCache = new Map<string, { data: string; expiry: number }>();
 
 // Rate limit tracking
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 1500;
+const MIN_REQUEST_INTERVAL = 300;
 
 // Axios instance
 const axiosInstance = axios.create({
@@ -38,8 +38,8 @@ async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Throttled request
-async function throttledRequest(url: string): Promise<string> {
+// Throttled request with automatic retry
+async function throttledRequest(url: string, retries: number = 2): Promise<string> {
   const now = Date.now();
   const timeSinceLastRequest = now - lastRequestTime;
 
@@ -48,8 +48,22 @@ async function throttledRequest(url: string): Promise<string> {
   }
 
   lastRequestTime = Date.now();
-  const { data } = await axiosInstance.get(url);
-  return data;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const { data } = await axiosInstance.get(url);
+      return data;
+    } catch (error: any) {
+      if (attempt < retries) {
+        const waitTime = 1000 * (attempt + 1); // 1s, 2s backoff
+        console.log(`[Rebahin] Request failed (attempt ${attempt + 1}/${retries + 1}), retrying in ${waitTime}ms: ${url}`);
+        await delay(waitTime);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error('Should not reach here');
 }
 
 // ============================================

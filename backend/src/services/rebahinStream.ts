@@ -129,7 +129,26 @@ async function getOrCreateSession(embedUrl: string): Promise<StreamSession | nul
   // Try clicking play button if m3u8 not captured yet
   if (!m3u8Content) {
     try {
-      await page.click('.jw-icon-display');
+      // Try multiple selectors for different JWPlayer versions
+      const playSelectors = [
+        '.jw-icon-display',
+        '.jw-display-icon-container', 
+        '.jw-video',
+        'video',
+        '.jw-controls .jw-icon-playback',
+        '.jw-poster',
+        '.play-button',
+        '#player',
+      ];
+      
+      for (const selector of playSelectors) {
+        try {
+          await page.click(selector);
+          console.log(`[RebahinStream] Clicked ${selector}`);
+          break;
+        } catch {}
+      }
+      
       const retryStart = Date.now();
       while (!m3u8Content && Date.now() - retryStart < 10000) {
         await new Promise((r) => setTimeout(r, 500));
@@ -186,6 +205,19 @@ export async function extractStream(
 
   const rewrittenContent = rewriteM3u8(session.m3u8Content, proxyBaseUrl);
   return { m3u8Content: rewrittenContent, m3u8Url: session.m3u8Url };
+}
+
+/**
+ * Invalidate (destroy) a session so the next extractStream call creates a fresh one.
+ */
+export function invalidateSession(embedUrl: string): void {
+  const key = getSessionKey(embedUrl);
+  const existing = sessions.get(key);
+  if (existing) {
+    console.log('[RebahinStream] Invalidating session:', key);
+    existing.page.close().catch(() => {});
+    sessions.delete(key);
+  }
 }
 
 /**
