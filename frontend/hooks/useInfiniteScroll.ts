@@ -20,7 +20,7 @@ interface InfiniteScrollResult<T> {
   isLoading: boolean;
   isLoadingMore: boolean;
   hasNext: boolean;
-  sentinelRef: React.RefObject<HTMLDivElement | null>;
+  sentinelRef: React.RefObject<HTMLDivElement>;
   reset: () => void;
 }
 
