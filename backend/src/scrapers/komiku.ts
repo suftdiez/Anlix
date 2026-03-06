@@ -301,222 +301,174 @@ export async function getByType(
 }
 
 /**
- * Get comic detail with chapters (uses Puppeteer to handle "Load More" button)
+ * Get comic detail with chapters (pure axios+cheerio, no Puppeteer needed)
+ * All chapters are rendered in static HTML on komiku.cc
  */
 export async function getDetail(slug: string): Promise<ComicDetail | null> {
   const cacheKey = `komiku:detail:${slug}`;
   const cached = await getCached<ComicDetail>(cacheKey);
   if (cached) return cached;
 
-  let browser;
   try {
-    const puppeteer = await import('puppeteer');
-    
-    browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-    
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
     const url = `${BASE_URL}/komik/${slug}`;
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
-    
-    // Try to click "Load More" / "Tampilkan Lebih Banyak" button multiple times to load all chapters
-    // Need 150+ clicks for comics with 1000+ chapters like One Piece
-    for (let i = 0; i < 150; i++) {
-      try {
-        // Use page.evaluate to find and click load more button
-        const clicked = await page.evaluate(() => {
-          const buttons = Array.from(document.querySelectorAll('button'));
-          for (const btn of buttons) {
-            const text = (btn.textContent || '').toLowerCase();
-            if (text.includes('tampilkan') || text.includes('lebih') || text.includes('load') || text.includes('more')) {
-              (btn as HTMLButtonElement).click();
-              return true;
-            }
-          }
-          return false;
-        });
-        if (!clicked) break;
-        // Shorter delay for faster loading
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } catch {
-        break;
+    const { data: html } = await axiosInstance.get(url);
+    const $ = cheerio.load(html);
+
+    // Get title
+    const title = $('h1').first().text().trim() ||
+                  slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+    // Get poster
+    const poster = $('img[src*="komiku"], img[alt*="komik"]').first().attr('src') || '';
+
+    // Get type (Manga/Manhwa/Manhua)
+    let type = 'Manga';
+    $('span').each((_, el) => {
+      const text = $(el).text().trim();
+      // Check "Type: Manhwa" combined format
+      if (text.toLowerCase().startsWith('type:')) {
+        const typeMatch = text.match(/type:\s*(manga|manhwa|manhua)/i);
+        if (typeMatch) {
+          type = typeMatch[1].charAt(0).toUpperCase() + typeMatch[1].slice(1).toLowerCase();
+          return false; // break
+        }
       }
+      // Check separate "Type:" label with sibling value
+      if (text.toLowerCase() === 'type:' || text.toLowerCase() === 'type') {
+        const nextText = $(el).next('span').text().trim();
+        if (nextText.match(/^(manga|manhwa|manhua)$/i)) {
+          type = nextText.charAt(0).toUpperCase() + nextText.slice(1).toLowerCase();
+          return false; // break
+        }
+      }
+    });
+
+    // Get author
+    let author = '';
+    $('span').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.toLowerCase().includes('author:') || text.toLowerCase() === 'author') {
+        const nextText = $(el).next('span').text().trim() || $(el).next().text().trim();
+        if (nextText) {
+          author = nextText;
+        } else {
+          author = text.replace(/author:?/i, '').trim();
+        }
+        return false; // break
+      }
+    });
+
+    // Get released year
+    let released = '';
+    $('span').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.toLowerCase().includes('rilis:') || text.toLowerCase() === 'rilis') {
+        const nextText = $(el).next('span').text().trim() || $(el).next().text().trim();
+        const yearMatch = (nextText || text).match(/\d{4}/);
+        if (yearMatch) released = yearMatch[0];
+        return false; // break
+      }
+    });
+
+    // Get genres
+    const genres: string[] = [];
+    $('a[href*="/genre/"]').each((_, el) => {
+      const genre = $(el).text().trim();
+      if (genre && !genres.includes(genre)) {
+        genres.push(genre);
+      }
+    });
+
+    // Get synopsis (longest paragraph)
+    let synopsis = '';
+    $('p').each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 100 && !synopsis) {
+        synopsis = text;
+      }
+    });
+
+    // Get chapters — all are in static HTML (hidden ones are toggled by JS)
+    const chapters: Chapter[] = [];
+    const seen = new Set<string>();
+
+    $('a[href*="-chapter-"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+      const text = $el.text().trim().toLowerCase();
+
+      // Skip "Chapter Awal" or navigation buttons
+      if (text.includes('awal') || text.includes('pertama') || text.includes('first')) return;
+
+      // Skip button-like parents
+      const parentClass = $el.parent().attr('class') || '';
+      if (parentClass.includes('btn') || parentClass.includes('button')) return;
+
+      // Normalize href to full URL
+      const fullHref = href.startsWith('http') ? href : `${BASE_URL}${href.startsWith('/') ? '' : '/'}${href}`;
+
+      if (seen.has(fullHref)) return;
+      seen.add(fullHref);
+
+      // Extract chapter number from URL
+      const numMatch = fullHref.match(/-chapter-(\d+(?:\.\d+)?)/i);
+      const chapterNum = numMatch ? numMatch[1] : '';
+      if (!chapterNum) return;
+
+      const chapterSlug = fullHref.split('/').filter(Boolean).pop() || '';
+
+      // Extract update time from spans inside the link
+      let updatedAt = '';
+      $el.find('span').each((_, span) => {
+        const spanText = $(span).text().trim();
+        const timeMatch = spanText.match(/^(\d+)\s*(menit|jam|hari|bulan|tahun)$/i);
+        if (timeMatch) {
+          updatedAt = `${timeMatch[1]} ${timeMatch[2]}`;
+        }
+      });
+
+      // If no span found, check the text content for time patterns
+      if (!updatedAt) {
+        const timeMatch = $el.text().trim().match(/(\d+)\s*(menit|jam|hari|bulan|tahun)/i);
+        if (timeMatch) {
+          updatedAt = `${timeMatch[1]} ${timeMatch[2]}`;
+        }
+      }
+
+      chapters.push({
+        number: chapterNum,
+        title: `Chapter ${chapterNum}`,
+        slug: chapterSlug,
+        url: fullHref,
+        updatedAt,
+      });
+    });
+
+    // Sort chapters by number (descending)
+    chapters.sort((a, b) => parseFloat(b.number) - parseFloat(a.number));
+
+    const result: ComicDetail = {
+      id: slug,
+      title,
+      slug,
+      poster,
+      type,
+      author,
+      released,
+      synopsis: synopsis || 'Tidak ada sinopsis.',
+      genres,
+      chapters,
+      url: `${BASE_URL}/komik/${slug}`,
+    };
+
+    if (title) {
+      await setCache(cacheKey, result);
     }
-    
-    // Wait a moment for chapters to load
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Extract data from page
-    const data = await page.evaluate((baseUrl, comicSlug) => {
-      // Get title
-      const title = document.querySelector('h1')?.textContent?.trim() || 
-                    comicSlug.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-      
-      // Get poster
-      const posterEl = document.querySelector('img[src*="komiku"], img[alt*="komik"]');
-      const poster = posterEl?.getAttribute('src') || '';
-      
-      // Get type - look for "Type:" label and get sibling value span
-      let type = 'Manga';
-      let typeFound = false;
-      const allSpans = document.querySelectorAll('span');
-      allSpans.forEach(span => {
-        if (typeFound) return; // Already found
-        const text = span.textContent?.trim() || '';
-        // Check for exact "Type:" pattern (case insensitive)
-        if (text.toLowerCase() === 'type:' || text.toLowerCase() === 'type') {
-          // Get the value from next sibling span
-          const nextSibling = span.nextElementSibling;
-          if (nextSibling && nextSibling.tagName === 'SPAN') {
-            const siblingText = nextSibling.textContent?.trim() || '';
-            if (siblingText.match(/^(manga|manhwa|manhua)$/i)) {
-              type = siblingText.charAt(0).toUpperCase() + siblingText.slice(1).toLowerCase();
-              typeFound = true;
-            }
-          }
-        }
-        // Also check for combined format "Type: Manga"
-        if (!typeFound && text.toLowerCase().startsWith('type:')) {
-          const typeMatch = text.match(/type:\s*(manga|manhwa|manhua)/i);
-          if (typeMatch) {
-            type = typeMatch[1].charAt(0).toUpperCase() + typeMatch[1].slice(1).toLowerCase();
-            typeFound = true;
-          }
-        }
-      });
-      
-      // Get author - look for "Author:" pattern
-      let author = '';
-      allSpans.forEach(span => {
-        const text = span.textContent?.trim() || '';
-        if (text.toLowerCase().includes('author:') || text.toLowerCase() === 'author') {
-          const nextSibling = span.nextElementSibling;
-          if (nextSibling) {
-            author = nextSibling.textContent?.trim() || '';
-          } else {
-            author = text.replace(/author:?/i, '').trim();
-          }
-        }
-      });
-      
-      // Get released year - look for "Rilis:" pattern
-      let released = '';
-      allSpans.forEach(span => {
-        const text = span.textContent?.trim() || '';
-        if (text.toLowerCase().includes('rilis:') || text.toLowerCase() === 'rilis') {
-          const nextSibling = span.nextElementSibling;
-          if (nextSibling) {
-            const yearMatch = nextSibling.textContent?.match(/\d{4}/);
-            released = yearMatch ? yearMatch[0] : '';
-          } else {
-            const yearMatch = text.match(/\d{4}/);
-            released = yearMatch ? yearMatch[0] : '';
-          }
-        }
-      });
-      
-      // Get genres
-      const genres: string[] = [];
-      document.querySelectorAll('a[href*="/genre/"]').forEach(el => {
-        const genre = el.textContent?.trim();
-        if (genre && !genres.includes(genre)) {
-          genres.push(genre);
-        }
-      });
-      
-      // Get synopsis
-      let synopsis = '';
-      document.querySelectorAll('p').forEach(el => {
-        const text = el.textContent?.trim() || '';
-        if (text.length > 100 && !synopsis) {
-          synopsis = text;
-        }
-      });
-      
-      // Get chapters
-      const chapters: any[] = [];
-      const seen = new Set<string>();
-      
-      document.querySelectorAll('a[href*="-chapter-"]').forEach(el => {
-        const link = el as HTMLAnchorElement;
-        const href = link.href;
-        const text = link.textContent?.trim().toLowerCase() || '';
-        
-        // Skip "Chapter Awal" or navigation buttons
-        if (text.includes('awal') || text.includes('pertama') || text.includes('first')) return;
-        
-        // Skip button-like parents
-        const parentClass = link.parentElement?.className || '';
-        if (parentClass.includes('btn') || parentClass.includes('button')) return;
-        
-        if (seen.has(href)) return;
-        seen.add(href);
-        
-        // Extract chapter number from URL
-        const numMatch = href.match(/-chapter-(\d+(?:\.\d+)?)/i);
-        const chapterNum = numMatch ? numMatch[1] : '';
-        
-        if (!chapterNum) return;
-        
-        const chapterSlug = href.split('/').filter(Boolean).pop() || '';
-        
-        // Extract update time from the last span in the link (time is in separate span)
-        // Structure: <a><div><span>Chapter 142</span><span>2 tahun</span></div></a>
-        const timeSpans = link.querySelectorAll('span');
-        let updatedAt = '';
-        if (timeSpans.length > 0) {
-          // Get the last span which contains the time
-          const lastSpan = timeSpans[timeSpans.length - 1];
-          const timeText = lastSpan.textContent?.trim() || '';
-          // Validate it looks like a time (e.g., "2 tahun", "5 hari")
-          const timeMatch = timeText.match(/^(\d+)\s*(menit|jam|hari|bulan|tahun)$/i);
-          if (timeMatch) {
-            updatedAt = `${timeMatch[1]} ${timeMatch[2]}`;
-          }
-        }
-        
-        chapters.push({
-          number: chapterNum,
-          title: `Chapter ${chapterNum}`,
-          slug: chapterSlug,
-          url: href,
-          updatedAt,
-        });
-      });
-      
-      // Sort chapters by number (descending)
-      chapters.sort((a, b) => parseFloat(b.number) - parseFloat(a.number));
-      
-      return {
-        id: comicSlug,
-        title,
-        slug: comicSlug,
-        poster,
-        type,
-        author,
-        released,
-        synopsis: synopsis || 'Tidak ada sinopsis.',
-        genres,
-        chapters,
-        url: baseUrl + '/komik/' + comicSlug,
-      };
-    }, BASE_URL, slug);
-    
-    await browser.close();
-    
-    if (data.title) {
-      await setCache(cacheKey, data);
-    }
-    
-    console.log(`[Komiku] Got detail for ${slug}: ${data.chapters.length} chapters`);
-    return data;
+
+    console.log(`[Komiku] Got detail for ${slug}: ${chapters.length} chapters`);
+    return result;
   } catch (error) {
     console.error('[Komiku] Error fetching detail:', error);
-    if (browser) await browser.close();
     return null;
   }
 }

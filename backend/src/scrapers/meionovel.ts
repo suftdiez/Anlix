@@ -545,27 +545,24 @@ export async function getDetail(slug: string): Promise<NovelDetail | null> {
       }
     });
 
-    // Second approach: If no chapters found and we have postId, try AJAX endpoint
-    if (chapters.length === 0 && postId) {
-      console.log('[MeioNovel] Trying AJAX endpoint for chapters...');
+    // Second approach: POST to /novel/{slug}/ajax/chapters/ (Madara theme endpoint)
+    if (chapters.length === 0) {
+      console.log('[MeioNovel] Trying /ajax/chapters/ endpoint...');
       try {
-        // WordPress Madara theme AJAX endpoint for chapters
-        const ajaxData = new URLSearchParams();
-        ajaxData.append('action', 'manga_get_chapters');
-        ajaxData.append('manga', postId);
-        
+        const ajaxChaptersUrl = `${BASE_URL}/novel/${slug}/ajax/chapters/`;
         const ajaxResponse = await axiosInstance.post(
-          `${BASE_URL}/wp-admin/admin-ajax.php`,
-          ajaxData.toString(),
+          ajaxChaptersUrl,
+          '',
           {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded',
               'Referer': url,
+              'X-Requested-With': 'XMLHttpRequest',
             },
           }
         );
         
-        if (ajaxResponse.data) {
+        if (ajaxResponse.data && typeof ajaxResponse.data === 'string') {
           const $ajax = cheerio.load(ajaxResponse.data);
           $ajax('li.wp-manga-chapter, .wp-manga-chapter').each((_, el) => {
             const $el = $ajax(el);
@@ -593,9 +590,10 @@ export async function getDetail(slug: string): Promise<NovelDetail | null> {
               }
             }
           });
+          console.log(`[MeioNovel] /ajax/chapters/ returned ${chapters.length} chapters`);
         }
       } catch (ajaxError) {
-        console.error('[MeioNovel] AJAX chapter fetch failed:', ajaxError);
+        console.error('[MeioNovel] /ajax/chapters/ fetch failed:', ajaxError);
       }
     }
 
@@ -686,199 +684,9 @@ export async function getDetail(slug: string): Promise<NovelDetail | null> {
       }
     }
 
-    // Fifth approach: Use Puppeteer as final fallback for JS-rendered content
-    // Also run if we only got 2 chapters (likely just Read First/Last buttons)
-    if (chapters.length <= 2) {
-      console.log('[MeioNovel] Trying Puppeteer for JS-rendered chapters...');
-      try {
-        const puppeteer = await import('puppeteer');
-        const browser = await puppeteer.default.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        });
-
-        const page = await browser.newPage();
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
-        
-        // Wait for initial content
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        console.log('[MeioNovel] Page loaded, looking for Show more button...');
-        
-        // Scroll down to see chapter section
-        await page.evaluate(() => {
-          window.scrollBy(0, 800);
-        });
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Try to click "Show more" button using multiple approaches
-        let showMoreClicked = false;
-        
-        // Approach 1: Use page.click() with selectors
-        const buttonSelectors = [
-          'span.content-readmore',
-          '.content-readmore',
-          '.btn-link.content-readmore',
-          'span.btn-link'
-        ];
-        
-        for (const selector of buttonSelectors) {
-          try {
-            await page.waitForSelector(selector, { timeout: 3000 });
-            await page.click(selector);
-            showMoreClicked = true;
-            console.log(`[MeioNovel] Clicked button with selector: ${selector}`);
-            break;
-          } catch {
-            // Selector not found, try next
-          }
-        }
-        
-        // Approach 2: If no selector worked, try clicking by text content
-        if (!showMoreClicked) {
-          showMoreClicked = await page.evaluate(() => {
-            const spans = Array.from(document.querySelectorAll('span, button, a'));
-            for (const el of spans) {
-              const text = (el.textContent || '').toLowerCase();
-              if (text.includes('show more') || text.includes('show all') || text.includes('tampilkan')) {
-                (el as HTMLElement).click();
-                return true;
-              }
-            }
-            return false;
-          });
-          if (showMoreClicked) {
-            console.log('[MeioNovel] Clicked Show more via text search');
-          }
-        }
-        
-        if (showMoreClicked) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
-        } else {
-          console.log('[MeioNovel] No Show more button found, trying scroll anyway');
-        }
-        
-        // Perform infinite scroll to load all chapters
-        console.log('[MeioNovel] Starting infinite scroll to load chapters...');
-        
-        let previousChapterCount = 0;
-        let sameCountRetries = 0;
-        const maxScrollAttempts = 200; // More scroll attempts for novels with 2000+ chapters
-        
-        for (let scrollAttempt = 0; scrollAttempt < maxScrollAttempts; scrollAttempt++) {
-          // Scroll to bottom using page.evaluate
-          await page.evaluate(() => {
-            window.scrollTo(0, document.body.scrollHeight);
-          });
-          
-          // Wait for content to load
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Count current chapters
-          const currentCount = await page.evaluate(() => {
-            return document.querySelectorAll('li.wp-manga-chapter, .wp-manga-chapter').length;
-          });
-          
-          if (currentCount === previousChapterCount) {
-            sameCountRetries++;
-            if (sameCountRetries >= 15) {
-              console.log(`[MeioNovel] No new chapters after ${scrollAttempt + 1} scrolls. Total: ${currentCount}`);
-              break;
-            }
-          } else {
-            sameCountRetries = 0;
-            previousChapterCount = currentCount;
-          }
-          
-          // Log progress every 10 scrolls
-          if (scrollAttempt % 10 === 0) {
-            console.log(`[MeioNovel] Scroll ${scrollAttempt}: ${currentCount} chapters loaded`);
-          }
-        }
-        
-        console.log(`[MeioNovel] Finished scrolling. Extracting chapters...`);
-
-
-        // @ts-ignore - This code runs in browser context via Puppeteer
-        const puppeteerChapters = await page.evaluate((novelSlug, baseUrl) => {
-          const found: { id: string; number: string; title: string; slug: string; type: string; date: string; url: string }[] = [];
-          
-          // Look for chapter list items first
-          // @ts-ignore
-          const chapterItems = document.querySelectorAll('li.wp-manga-chapter, .wp-manga-chapter, .version-chap li');
-          // @ts-ignore
-          chapterItems.forEach(function(li: any) {
-            const anchor = li.querySelector('a');
-            if (!anchor) return;
-            
-            const href = anchor.href || '';
-            const text = (anchor.textContent || '').trim();
-            
-            if (href.indexOf('/novel/' + novelSlug + '/') > -1 && text.length > 0) {
-              const chapterSlug = href.replace(baseUrl + '/novel/' + novelSlug + '/', '').replace(/\/$/, '');
-              if (chapterSlug && chapterSlug !== novelSlug && chapterSlug.indexOf('http') === -1 &&
-                  !found.some(function(c) { return c.slug === chapterSlug; })) {
-                const numMatch = text.match(/(\d+)/);
-                const num = numMatch ? numMatch[1] : '';
-                const dateEl = li.querySelector('.chapter-release-date i, time, .chapterdate');
-                const date = dateEl ? dateEl.textContent.trim() : '';
-                
-                found.push({
-                  id: chapterSlug,
-                  number: num,
-                  title: text,
-                  slug: chapterSlug,
-                  type: chapterSlug.indexOf('htl') > -1 ? 'HTL' : 'MTL',
-                  date: date,
-                  url: href,
-                });
-              }
-            }
-          });
-          
-          // If no chapters found from list, try any chapter links
-          if (found.length === 0) {
-            // @ts-ignore
-            const links = Array.from(document.querySelectorAll('a[href*="' + novelSlug + '/"]'));
-            // @ts-ignore
-            links.forEach(function(el: any) {
-              const href = el.href || '';
-              const text = (el.textContent || '').trim();
-              
-              if ((href.indexOf('/mtl/') > -1 || href.indexOf('/htl/') > -1 || 
-                   /chapter[-_]?\d+/i.test(href) || /chapter\s*\d+/i.test(text)) && 
-                  text.length > 0 && text.length < 100) {
-                const chapterSlug = href.replace(baseUrl + '/novel/' + novelSlug + '/', '').replace(/\/$/, '');
-                if (chapterSlug && chapterSlug !== novelSlug && chapterSlug.indexOf('http') === -1 &&
-                    !found.some(function(c) { return c.slug === chapterSlug; })) {
-                  const numMatch = text.match(/(\d+)/);
-                  const num = numMatch ? numMatch[1] : '';
-                  found.push({
-                    id: chapterSlug,
-                    number: num,
-                    title: text,
-                    slug: chapterSlug,
-                    type: chapterSlug.indexOf('htl') > -1 ? 'HTL' : 'MTL',
-                    date: '',
-                    url: href,
-                  });
-                }
-              }
-            });
-          }
-          
-          return found;
-        }, slug, BASE_URL);
-
-        await browser.close();
-        
-        if (puppeteerChapters.length > 0) {
-          chapters.push(...puppeteerChapters);
-          console.log(`[MeioNovel] Puppeteer found ${puppeteerChapters.length} chapters`);
-        }
-      } catch (puppeteerError) {
-        console.error('[MeioNovel] Puppeteer fallback failed:', puppeteerError);
-      }
+    // Fifth approach: Log if still no chapters found
+    if (chapters.length === 0) {
+      console.warn(`[MeioNovel] No chapters found for ${slug} after all approaches`);
     }
 
     // Extract related novels from "YOU MAY ALSO LIKE" section
