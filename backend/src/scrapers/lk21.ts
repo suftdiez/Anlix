@@ -355,61 +355,88 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
   const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
   if (cached) return cached;
 
+  // Strategy: Try Puppeteer first (LK21 results with streaming), then TMDB fallback
+  
+  // === METHOD 1: Puppeteer (works on localhost, fails on Render) ===
+  let browser = null;
   try {
-    // Try cheerio-based search on LK21 first
+    const puppeteer = await import('puppeteer');
+    
     const url = page > 1 
       ? `${BASE_URL}/search/page/${page}/?s=${encodeURIComponent(query)}`
       : `${BASE_URL}/search?s=${encodeURIComponent(query)}`;
-    console.log(`[LK21] Searching (cheerio): ${url}`);
+    console.log(`[LK21] Searching with Puppeteer: ${url}`);
     
-    const html = await throttledRequest(url);
-    const $ = cheerio.load(html);
-    
-    const films: FilmItem[] = [];
-    const seen = new Set<string>();
-    
-    // Find all movie cards with images and links
-    $('a').each((_, el) => {
-      const img = $(el).find('img');
-      if (img.length === 0) return;
-      
-      const href = $(el).attr('href') || '';
-      if (!href || href.includes('/genre/') || href.includes('/country/') || 
-          href.includes('/page/') || href.includes('/search/') || href.includes('/year/')) {
-        return;
-      }
-      
-      const title = $(el).attr('title') || img.attr('alt') || '';
-      if (!title || title.length < 3) return;
-      
-      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
-      if (!slug || seen.has(slug) || slug.includes('/') || slug.length < 3) return;
-      
-      const poster = img.attr('src') || img.attr('data-src') || '';
-      const yearMatch = slug.match(/-(\d{4})$/);
-      
-      seen.add(slug);
-      films.push({
-        id: slug,
-        title: title.substring(0, 150),
-        slug,
-        poster,
-        year: yearMatch ? yearMatch[1] : '',
-        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
-      });
+    browser = await puppeteer.default.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
     
-    console.log(`[LK21] Cheerio search "${query}": Found ${films.length} films`);
+    const browserPage = await browser.newPage();
+    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+    await browserPage.waitForSelector('#results a, .gallery-grid a', { timeout: 8000 }).catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    const films = await browserPage.evaluate((baseUrl: string) => {
+      const results: any[] = [];
+      const seen = new Set<string>();
+      
+      document.querySelectorAll('a').forEach((el) => {
+        const img = el.querySelector('img');
+        if (!img) return;
+        
+        const href = el.getAttribute('href') || '';
+        if (!href || href.includes('/genre/') || href.includes('/country/') || 
+            href.includes('/page/') || href.includes('/search/') || href.includes('/year/')) {
+          return;
+        }
+        
+        const title = el.getAttribute('title') || img.getAttribute('alt') || '';
+        if (!title || title.length < 3) return;
+        
+        let slug = href.replace(baseUrl, '').replace(/^\//, '').replace(/\/$/, '');
+        if (!slug || seen.has(slug) || slug.includes('/') || slug.length < 3) return;
+        
+        const poster = img.getAttribute('src') || img.getAttribute('data-src') || '';
+        const yearMatch = slug.match(/-(\d{4})$/);
+        
+        seen.add(slug);
+        results.push({
+          id: slug,
+          title: title.substring(0, 150),
+          slug,
+          poster,
+          year: yearMatch ? yearMatch[1] : '',
+          url: href.startsWith('http') ? href : `${baseUrl}/${slug}`,
+        });
+      });
+      
+      return results;
+    }, BASE_URL);
+    
+    await browser.close();
+    browser = null;
     
     if (films.length > 0) {
+      console.log(`[LK21] Puppeteer search "${query}": Found ${films.length} films`);
       const result = { data: films, hasNext: films.length >= 20 };
       await setCache(cacheKey, result);
       return result;
     }
     
-    // Fallback: Search TMDB if LK21 returned no results (likely blocked on Render)
-    console.log(`[LK21] No LK21 results, falling back to TMDB search for "${query}"`);
-    const { searchTVShow } = await import('../services/tmdb');
+    console.log('[LK21] Puppeteer search returned 0 results, trying TMDB...');
+  } catch (puppeteerError) {
+    console.log(`[LK21] Puppeteer search failed (expected on Render): ${(puppeteerError as Error).message?.substring(0, 100)}`);
+    if (browser) {
+      try { await browser.close(); } catch {}
+    }
+  }
+  
+  // === METHOD 2: TMDB Fallback (always works) ===
+  try {
+    console.log(`[LK21] Falling back to TMDB search for "${query}"`);
     const axios = (await import('axios')).default;
     
     const tmdbApiKey = process.env.TMDB_API_KEY || '';
@@ -417,7 +444,8 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
       return { data: [], hasNext: false };
     }
     
-    // Search both movies and TV shows on TMDB
+    const seen = new Set<string>();
+    
     const [movieRes, tvRes] = await Promise.all([
       axios.get('https://api.themoviedb.org/3/search/movie', {
         params: { api_key: tmdbApiKey, language: 'id-ID', query, page },
@@ -429,7 +457,6 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     
     const tmdbFilms: FilmItem[] = [];
     
-    // Process movies
     for (const movie of movieRes.data.results || []) {
       const year = movie.release_date ? movie.release_date.split('-')[0] : '';
       const title = movie.title || movie.original_title || '';
@@ -448,7 +475,6 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
       }
     }
     
-    // Process TV shows
     for (const show of tvRes.data.results || []) {
       const year = show.first_air_date ? show.first_air_date.split('-')[0] : '';
       const title = show.name || show.original_name || '';
