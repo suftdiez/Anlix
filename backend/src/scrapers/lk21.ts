@@ -466,11 +466,9 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
                   slug.replace(/-/g, ' ');
 
     // Detect redirect/blocking page from LK21
-    const bodyText = $('body').text().toLowerCase();
-    if (title.toLowerCase().includes('dialihkan') || 
-        title.toLowerCase().includes('nontondrama') ||
-        bodyText.includes('anda akan dialihkan') ||
-        bodyText.includes('will be redirected')) {
+    // Only match the specific redirect phrase, NOT the brand name "nontondrama" (which appears on all pages)
+    if (title.toLowerCase().includes('anda akan dialihkan') || 
+        title.toLowerCase().includes('akan dialihkan ke')) {
       console.log(`[LK21] Detected redirect/blocking page for ${slug}, returning null`);
       return null;
     }
@@ -1313,13 +1311,10 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
     
     const $ = cheerio.load(html);
     
-    // Detect redirect/blocking page
+    // Detect redirect/blocking page (only match specific redirect phrase, not the brand name)
     const pageTitle = $('h1').first().text().trim() || $('title').text().trim();
-    const bodyText = $('body').text().toLowerCase();
-    if (pageTitle.toLowerCase().includes('dialihkan') || 
-        pageTitle.toLowerCase().includes('nontondrama') ||
-        bodyText.includes('anda akan dialihkan') ||
-        bodyText.includes('will be redirected')) {
+    if (pageTitle.toLowerCase().includes('anda akan dialihkan') || 
+        pageTitle.toLowerCase().includes('akan dialihkan ke')) {
       console.log(`[LK21] Detected redirect/blocking page for series ${slug}`);
       return null;
     }
@@ -1340,6 +1335,7 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
     
     // Find total seasons from "Season X dari Y" text
     let totalSeasons = 0;
+    const bodyText = $('body').text().toLowerCase();
     const seasonDariMatch = bodyText.match(/season\s*\d+\s*dari\s*(\d+)/i);
     if (seasonDariMatch) {
       totalSeasons = parseInt(seasonDariMatch[1]);
@@ -1499,11 +1495,10 @@ export async function getEpisodeStreaming(episodeSlug: string): Promise<StreamSe
     const html = await throttledRequest(url);
     const $ = cheerio.load(html);
     
-    // Detect redirect/blocking page
+    // Detect redirect/blocking page (only match specific redirect phrase, not the brand name)
     const pageTitle = $('h1').first().text().trim() || $('title').text().trim();
-    const bodyText = $('body').text().toLowerCase();
-    if (pageTitle.toLowerCase().includes('dialihkan') || 
-        bodyText.includes('anda akan dialihkan')) {
+    if (pageTitle.toLowerCase().includes('anda akan dialihkan') || 
+        pageTitle.toLowerCase().includes('akan dialihkan ke')) {
       console.log(`[LK21] Detected redirect/blocking page for episode ${episodeSlug}`);
       return [];
     }
