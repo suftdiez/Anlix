@@ -498,11 +498,80 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
                   $('title').text().split('|')[0].trim() ||
                   slug.replace(/-/g, ' ');
 
-    // Detect redirect/blocking page from LK21
+     // Detect redirect/blocking page from LK21
     // Only match the specific redirect phrase, NOT the brand name "nontondrama" (which appears on all pages)
     if (title.toLowerCase().includes('anda akan dialihkan') || 
         title.toLowerCase().includes('akan dialihkan ke')) {
       console.log(`[LK21] Detected redirect/blocking page for ${slug}, returning null`);
+      return null;
+    }
+
+    // Detect LK21 homepage/generic page (not an actual film detail page)
+    // Strategy: check if the title contains ANY word from the slug (3+ chars)
+    // Real film pages: "Nonton Siccin 7 (2024) | LK21" contains "siccin" from slug "siccin-7-2024"
+    // Homepage: "Nonton Film & Series Sub Indo Gratis di Layarkaca21 (LK21) Official" does NOT contain "siccin"
+    const slugWords = slug.replace(/-\d{4}$/, '').split('-').filter(w => w.length >= 3);
+    const titleLower = title.toLowerCase();
+    const titleContainsSlugWord = slugWords.some(word => titleLower.includes(word.toLowerCase()));
+    
+    if (!titleContainsSlugWord && slugWords.length > 0) {
+      console.log(`[LK21] Title "${title}" does not match slug "${slug}", trying TMDB fallback`);
+      
+      // Parse slug to get search title: "siccin-7-2024" -> "Siccin 7", year "2024"
+      const yearMatch = slug.match(/-(\d{4})$/);
+      const filmYear = yearMatch ? yearMatch[1] : '';
+      const searchName = (filmYear ? slug.replace(`-${filmYear}`, '') : slug)
+        .replace(/-/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+      
+      try {
+        const tmdbAxios = (await import('axios')).default;
+        const tmdbApiKey = process.env.TMDB_API_KEY || '';
+        
+        if (tmdbApiKey) {
+          // Search TMDB for this movie
+          const searchRes = await tmdbAxios.get('https://api.themoviedb.org/3/search/movie', {
+            params: { api_key: tmdbApiKey, language: 'id-ID', query: searchName, year: filmYear || undefined },
+          });
+          
+          const movie = searchRes.data.results?.[0];
+          if (movie) {
+            console.log(`[LK21] TMDB found movie: "${movie.title}" (ID: ${movie.id})`);
+            
+            // Get full movie details from TMDB
+            const detailRes = await tmdbAxios.get(`https://api.themoviedb.org/3/movie/${movie.id}`, {
+              params: { api_key: tmdbApiKey, language: 'id-ID', append_to_response: 'credits' },
+            });
+            const tmdb = detailRes.data;
+            
+            const tmdbDetail: FilmDetail = {
+              id: slug,
+              title: tmdb.title || movie.title,
+              slug,
+              poster: tmdb.poster_path ? `https://image.tmdb.org/t/p/w500${tmdb.poster_path}` : '',
+              year: filmYear || (tmdb.release_date ? tmdb.release_date.split('-')[0] : ''),
+              rating: tmdb.vote_average ? tmdb.vote_average.toFixed(1) : '',
+              duration: tmdb.runtime ? `${tmdb.runtime} min` : '',
+              synopsis: tmdb.overview || 'Tidak ada sinopsis.',
+              genres: (tmdb.genres || []).map((g: any) => g.name).slice(0, 5),
+              director: tmdb.credits?.crew?.find((c: any) => c.job === 'Director')?.name || '',
+              actors: (tmdb.credits?.cast || []).slice(0, 10).map((a: any) => a.name),
+              country: (tmdb.production_countries || []).map((c: any) => c.name).join(', '),
+              translator: '',
+              servers: [], // No streaming servers from TMDB
+              relatedFilms: [],
+              url: `${BASE_URL}/${slug}`,
+            };
+            
+            await setCache(cacheKey, tmdbDetail);
+            return tmdbDetail;
+          }
+        }
+      } catch (tmdbError) {
+        console.error('[LK21] TMDB fallback failed:', tmdbError);
+      }
+      
+      // If TMDB also fails, return null
       return null;
     }
 
