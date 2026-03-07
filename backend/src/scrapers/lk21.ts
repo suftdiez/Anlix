@@ -433,7 +433,7 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     for (const movie of movieRes.data.results || []) {
       const year = movie.release_date ? movie.release_date.split('-')[0] : '';
       const title = movie.title || movie.original_title || '';
-      const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-') + (year ? `-${year}` : '');
+      const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
       
       if (!seen.has(slug) && title) {
         seen.add(slug);
@@ -452,7 +452,7 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     for (const show of tvRes.data.results || []) {
       const year = show.first_air_date ? show.first_air_date.split('-')[0] : '';
       const title = show.name || show.original_name || '';
-      const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-') + (year ? `-${year}` : '');
+      const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
       
       if (!seen.has(slug) && title) {
         seen.add(slug);
