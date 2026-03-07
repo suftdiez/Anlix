@@ -441,23 +441,51 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     
     const tmdbApiKey = process.env.TMDB_API_KEY || '';
     if (!tmdbApiKey) {
+      console.log('[LK21] No TMDB_API_KEY set, cannot search');
       return { data: [], hasNext: false };
     }
     
     const seen = new Set<string>();
     
-    const [movieRes, tvRes] = await Promise.all([
-      axios.get('https://api.themoviedb.org/3/search/movie', {
-        params: { api_key: tmdbApiKey, language: 'id-ID', query, page },
-      }).catch(() => ({ data: { results: [] } })),
-      axios.get('https://api.themoviedb.org/3/search/tv', {
-        params: { api_key: tmdbApiKey, language: 'id-ID', query, page },
-      }).catch(() => ({ data: { results: [] } })),
-    ]);
+    // Build search queries: original + progressively drop last word for typo tolerance
+    // e.g., "better call soul" → ["better call soul", "better call"]
+    const queryVariants = [query];
+    const words = query.trim().split(/\s+/);
+    if (words.length >= 2) {
+      // Add variant without last word (handles common typos in last word)
+      queryVariants.push(words.slice(0, -1).join(' '));
+    }
+    
+    // Try each query variant with both languages
+    let movieResults: any[] = [];
+    let tvResults: any[] = [];
+    
+    searchLoop:
+    for (const searchQuery of queryVariants) {
+      for (const lang of ['id-ID', 'en-US']) {
+        const [movieRes, tvRes] = await Promise.all([
+          axios.get('https://api.themoviedb.org/3/search/movie', {
+            params: { api_key: tmdbApiKey, language: lang, query: searchQuery, page },
+          }).catch(() => ({ data: { results: [] } })),
+          axios.get('https://api.themoviedb.org/3/search/tv', {
+            params: { api_key: tmdbApiKey, language: lang, query: searchQuery, page },
+          }).catch(() => ({ data: { results: [] } })),
+        ]);
+        
+        movieResults = movieRes.data.results || [];
+        tvResults = tvRes.data.results || [];
+        
+        if (movieResults.length > 0 || tvResults.length > 0) {
+          console.log(`[LK21] TMDB found results: query="${searchQuery}", lang=${lang}`);
+          break searchLoop;
+        }
+        console.log(`[LK21] TMDB 0 results: query="${searchQuery}", lang=${lang}`);
+      }
+    }
     
     const tmdbFilms: FilmItem[] = [];
     
-    for (const movie of movieRes.data.results || []) {
+    for (const movie of movieResults) {
       const year = movie.release_date ? movie.release_date.split('-')[0] : '';
       const title = movie.title || movie.original_title || '';
       const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
@@ -475,7 +503,7 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
       }
     }
     
-    for (const show of tvRes.data.results || []) {
+    for (const show of tvResults) {
       const year = show.first_air_date ? show.first_air_date.split('-')[0] : '';
       const title = show.name || show.original_name || '';
       const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
