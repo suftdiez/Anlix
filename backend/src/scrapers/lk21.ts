@@ -465,6 +465,16 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
                   $('title').text().split('|')[0].trim() ||
                   slug.replace(/-/g, ' ');
 
+    // Detect redirect/blocking page from LK21
+    const bodyText = $('body').text().toLowerCase();
+    if (title.toLowerCase().includes('dialihkan') || 
+        title.toLowerCase().includes('nontondrama') ||
+        bodyText.includes('anda akan dialihkan') ||
+        bodyText.includes('will be redirected')) {
+      console.log(`[LK21] Detected redirect/blocking page for ${slug}, returning null`);
+      return null;
+    }
+
     // Poster
     const poster = $('meta[property="og:image"]').attr('content') ||
                    $('.poster img, .thumb img, .cover img').attr('src') ||
@@ -1280,168 +1290,178 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
   if (cached) return cached;
 
   try {
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-
-    const browserPage = await browser.newPage();
-    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
     // Parse slug to extract base name and year
     // Input: "breaking-bad-2008" -> baseName: "breaking-bad", year: "2008"
     const yearMatch = slug.match(/-(\d{4})$/);
     const seriesYear = yearMatch ? yearMatch[1] : '';
     const baseName = seriesYear ? slug.replace(`-${seriesYear}`, '') : slug;
     
-    console.log(`[LK21] Parsed slug: baseName="${baseName}", year="${seriesYear}"`);
+    console.log(`[LK21] Series detail (cheerio): baseName="${baseName}", year="${seriesYear}"`);
     
     // Episode URL format: base-name-season-X-episode-Y-year
-    // e.g., "breaking-bad-season-1-episode-1-2008"
-    const firstEpisodeUrl = `${SERIES_URL}/${baseName}-season-1-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+    const firstEpisodeSlug = `${baseName}-season-1-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+    const firstEpisodeUrl = `${SERIES_URL}/${firstEpisodeSlug}`;
     console.log('[LK21] Fetching first episode:', firstEpisodeUrl);
     
-    await browserPage.goto(firstEpisodeUrl, { waitUntil: 'networkidle2', timeout: 60000 });
-    await new Promise(r => setTimeout(r, 5000));
-
-    // Extract basic info and total seasons
-    const basicInfo = await browserPage.evaluate(() => {
-      const data = {
-        title: '',
-        poster: '',
-        year: '',
-        totalSeasons: 0,
-        isSeries: false,
-      };
-
-      // Get title - remove Season/Episode suffix
-      const h1 = document.querySelector('h1');
-      let title = h1?.textContent?.trim() || document.title.split('|')[0].trim();
-      title = title.replace(/\s*[-–]\s*Season.*$/i, '').replace(/\s*Season.*$/i, '').trim();
-      data.title = title;
-
-      // Get poster
-      const posterMeta = document.querySelector('meta[property="og:image"]') as HTMLMetaElement | null;
-      data.poster = posterMeta?.content || '';
-
-      // Get year from URL
-      const yearMatch = window.location.href.match(/-(\d{4})(?:[/-]|$)/);
-      data.year = yearMatch ? yearMatch[1] : '';
-
-      // Find "Season X dari Y" text to get total seasons
-      const bodyText = document.body.innerText;
-      const seasonDariMatch = bodyText.match(/Season\s*\d+\s*dari\s*(\d+)/i);
-      if (seasonDariMatch) {
-        data.totalSeasons = parseInt(seasonDariMatch[1]);
-        data.isSeries = true;
-      }
-
-      // Also check h1/h2 text for season info
-      const headings = document.querySelectorAll('h1, h2, h3');
-      headings.forEach(h => {
-        const text = h.textContent || '';
-        if (text.toLowerCase().includes('season') && text.toLowerCase().includes('episode')) {
-          data.isSeries = true;
-        }
-      });
-
-      return data;
-    });
-
-    if (!basicInfo.isSeries || basicInfo.totalSeasons === 0) {
-      console.log(`[LK21] ${slug} is not detected as series or no seasons found`);
-      await browser.close();
+    let html: string;
+    try {
+      html = await throttledRequest(firstEpisodeUrl);
+    } catch (err) {
+      console.error('[LK21] Failed to fetch first episode page:', err);
       return null;
     }
-
-    console.log(`[LK21] Found series with ${basicInfo.totalSeasons} seasons`);
-
+    
+    const $ = cheerio.load(html);
+    
+    // Detect redirect/blocking page
+    const pageTitle = $('h1').first().text().trim() || $('title').text().trim();
+    const bodyText = $('body').text().toLowerCase();
+    if (pageTitle.toLowerCase().includes('dialihkan') || 
+        pageTitle.toLowerCase().includes('nontondrama') ||
+        bodyText.includes('anda akan dialihkan') ||
+        bodyText.includes('will be redirected')) {
+      console.log(`[LK21] Detected redirect/blocking page for series ${slug}`);
+      return null;
+    }
+    
+    // Extract title - remove Season/Episode suffix
+    let title = pageTitle
+      .replace(/\s*[-–]\s*Season.*$/i, '')
+      .replace(/\s*Season.*$/i, '')
+      .replace(/\s*Nonton\s*/i, '')
+      .trim();
+    if (!title || title.length < 2) {
+      title = slug.replace(/-\d{4}$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+    
+    // Poster
+    const poster = $('meta[property="og:image"]').attr('content') ||
+                   $('.poster img, .thumb img, .cover img').attr('src') || '';
+    
+    // Find total seasons from "Season X dari Y" text
+    let totalSeasons = 0;
+    const seasonDariMatch = bodyText.match(/season\s*\d+\s*dari\s*(\d+)/i);
+    if (seasonDariMatch) {
+      totalSeasons = parseInt(seasonDariMatch[1]);
+    }
+    
+    // Fallback: Look for season links/buttons to determine total seasons
+    if (totalSeasons === 0) {
+      const seasonNumbers: number[] = [];
+      $('a').each((_, el) => {
+        const href = $(el).attr('href') || '';
+        const seasonMatch = href.match(/season-(\d+)-episode/);
+        if (seasonMatch) {
+          seasonNumbers.push(parseInt(seasonMatch[1]));
+        }
+      });
+      if (seasonNumbers.length > 0) {
+        totalSeasons = Math.max(...seasonNumbers);
+      }
+    }
+    
+    // If still no seasons found, assume 1 season
+    if (totalSeasons === 0) {
+      totalSeasons = 1;
+    }
+    
+    console.log(`[LK21] Found series "${title}" with ${totalSeasons} seasons`);
+    
     // Initialize seasons
     const seasons: Season[] = [];
     const episodes: Episode[] = [];
     
-    for (let i = 1; i <= basicInfo.totalSeasons; i++) {
+    for (let i = 1; i <= totalSeasons; i++) {
       seasons.push({ number: i, episodeCount: 0 });
     }
-
-    // For each season, visit episode 1 and extract episode buttons
-    for (let seasonNum = 1; seasonNum <= basicInfo.totalSeasons; seasonNum++) {
-      // Use baseName with year at end: base-name-season-X-episode-1-year
-      const seasonEpUrl = `${SERIES_URL}/${baseName}-season-${seasonNum}-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+    
+    // For each season, visit episode 1 page and extract episode links/buttons
+    for (let seasonNum = 1; seasonNum <= totalSeasons; seasonNum++) {
+      const seasonEpSlug = `${baseName}-season-${seasonNum}-episode-1${seriesYear ? '-' + seriesYear : ''}`;
+      const seasonEpUrl = `${SERIES_URL}/${seasonEpSlug}`;
       console.log(`[LK21] Scraping season ${seasonNum}: ${seasonEpUrl}`);
-
+      
       try {
-        await browserPage.goto(seasonEpUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await new Promise(r => setTimeout(r, 3000));
-
-        // Extract episode buttons - look for small boxes with just numbers
-        const seasonEps = await browserPage.evaluate((sNum: number, bName: string, yr: string) => {
-          const eps: Array<{episode: number, slug: string}> = [];
-          const seenNums = new Set<number>();
-
-          // Find all links/buttons with just a number (1-99) as text
-          // Episode buttons are typically small numbered boxes
-          document.querySelectorAll('a').forEach(link => {
-            const text = (link.textContent || '').trim();
-            const href = link.href || '';
+        // Reuse the first page HTML if this is season 1
+        let seasonHtml: string;
+        if (seasonNum === 1) {
+          seasonHtml = html;
+        } else {
+          seasonHtml = await throttledRequest(seasonEpUrl);
+        }
+        
+        const $s = cheerio.load(seasonHtml);
+        const seenNums = new Set<number>();
+        
+        // Look for episode links/buttons (small numbered links)
+        $s('a').each((_, el) => {
+          const text = $s(el).text().trim();
+          const href = $s(el).attr('href') || '';
+          
+          // Check if text is just a small number (episode number)
+          if (/^[1-9]\d?$/.test(text)) {
+            const epNum = parseInt(text);
             
-            // Check if text is just a small number (episode number)
-            if (/^[1-9]\d?$/.test(text)) {
-              const epNum = parseInt(text);
-              
-              // Verify this looks like an episode link (should contain season-X-episode-Y pattern)
-              // or be a simple numbered button in the episode area
-              const isEpisodeLink = href.includes(`-season-${sNum}-episode-`);
-              const isSimpleNumber = epNum >= 1 && epNum <= 50;
-              
-              if ((isEpisodeLink || isSimpleNumber) && !seenNums.has(epNum)) {
+            // Verify this looks like an episode link
+            const isEpisodeLink = href.includes(`-season-${seasonNum}-episode-`);
+            const isSimpleNumber = epNum >= 1 && epNum <= 50;
+            
+            if ((isEpisodeLink || isSimpleNumber) && !seenNums.has(epNum)) {
+              seenNums.add(epNum);
+              const epSlug = `${baseName}-season-${seasonNum}-episode-${epNum}${seriesYear ? '-' + seriesYear : ''}`;
+              episodes.push({
+                season: seasonNum,
+                episode: epNum,
+                title: `Episode ${epNum}`,
+                slug: epSlug,
+                url: `${SERIES_URL}/${epSlug}`,
+              });
+            }
+          }
+        });
+        
+        // Fallback: Look for links containing "episode-N" pattern
+        if (seenNums.size === 0) {
+          $s(`a[href*="season-${seasonNum}-episode-"]`).each((_, el) => {
+            const href = $s(el).attr('href') || '';
+            const epMatch = href.match(/episode-(\d+)/);
+            if (epMatch) {
+              const epNum = parseInt(epMatch[1]);
+              if (!seenNums.has(epNum)) {
                 seenNums.add(epNum);
-                // Construct proper slug: base-name-season-X-episode-Y-year
-                const epSlug = `${bName}-season-${sNum}-episode-${epNum}${yr ? '-' + yr : ''}`;
-                eps.push({ episode: epNum, slug: epSlug });
+                const epSlug = `${baseName}-season-${seasonNum}-episode-${epNum}${seriesYear ? '-' + seriesYear : ''}`;
+                episodes.push({
+                  season: seasonNum,
+                  episode: epNum,
+                  title: `Episode ${epNum}`,
+                  slug: epSlug,
+                  url: `${SERIES_URL}/${epSlug}`,
+                });
               }
             }
           });
-
-          // Sort by episode number
-          eps.sort((a, b) => a.episode - b.episode);
-          return eps;
-        }, seasonNum, baseName, seriesYear);
-
-        // Add episodes for this season
-        seasonEps.forEach(ep => {
-          episodes.push({
-            season: seasonNum,
-            episode: ep.episode,
-            title: `Episode ${ep.episode}`,
-            slug: ep.slug,
-            url: `${SERIES_URL}/${ep.slug}`,
-          });
-        });
-
+        }
+        
         // Update season episode count
-        const maxEp = seasonEps.length > 0 ? Math.max(...seasonEps.map(e => e.episode)) : 0;
+        const maxEp = seenNums.size > 0 ? Math.max(...seenNums) : 0;
         seasons[seasonNum - 1].episodeCount = maxEp;
-
-        console.log(`[LK21] Season ${seasonNum}: ${seasonEps.length} episodes (max: ${maxEp})`);
+        
+        console.log(`[LK21] Season ${seasonNum}: ${seenNums.size} episodes (max: ${maxEp})`);
       } catch (err) {
         console.error(`[LK21] Error scraping season ${seasonNum}:`, err);
         // If season page fails, it might not exist - that's OK
       }
     }
-
-    await browser.close();
-
+    
     // Sort episodes
     episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
-
+    
     const detail: SeriesDetail = {
       id: slug,
-      title: basicInfo.title.substring(0, 150),
+      title: title.substring(0, 150),
       slug,
-      poster: basicInfo.poster,
-      year: basicInfo.year,
+      poster,
+      year: seriesYear,
       rating: '',
       synopsis: 'Tidak ada sinopsis.',
       genres: [],
@@ -1451,10 +1471,12 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
       seasons,
       episodes,
     };
-
+    
     console.log(`[LK21] Final: ${seasons.length} seasons, ${episodes.length} episodes`);
     
-    await setCache(cacheKey, detail);
+    if (episodes.length > 0) {
+      await setCache(cacheKey, detail);
+    }
     return detail;
   } catch (error) {
     console.error('[LK21] Error fetching series detail:', error);
@@ -1471,119 +1493,91 @@ export async function getEpisodeStreaming(episodeSlug: string): Promise<StreamSe
   if (cached) return cached;
 
   try {
-    const puppeteer = await import('puppeteer');
-    const browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-    });
-
-    const browserPage = await browser.newPage();
-    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    
-    // LK21 series/episodes use nontondrama.my domain
-    const SERIES_URL = 'https://tv3.nontondrama.my';
     const url = `${SERIES_URL}/${episodeSlug}`;
+    console.log('[LK21] Fetching episode (cheerio):', url);
     
-    console.log('[LK21] Fetching episode from:', url);
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
     
-    await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    // Detect redirect/blocking page
+    const pageTitle = $('h1').first().text().trim() || $('title').text().trim();
+    const bodyText = $('body').text().toLowerCase();
+    if (pageTitle.toLowerCase().includes('dialihkan') || 
+        bodyText.includes('anda akan dialihkan')) {
+      console.log(`[LK21] Detected redirect/blocking page for episode ${episodeSlug}`);
+      return [];
+    }
     
-    // Wait for player to load
-    await new Promise(r => setTimeout(r, 7000));
-
-    // Extract server tabs (same logic as film)
-    const serverData = await browserPage.evaluate(() => {
-      const result: Array<{name: string, url: string}> = [];
-      
-      // Get main player iframe first
-      const mainPlayer = document.getElementById('main-player') as HTMLIFrameElement;
-      if (mainPlayer && mainPlayer.src) {
-        result.push({
-          name: 'GANTI PLAYER',
-          url: mainPlayer.src,
-        });
+    const serverData: Array<{name: string, url: string}> = [];
+    
+    // Pattern 1: Get main player iframe
+    const mainPlayer = $('#main-player');
+    if (mainPlayer.length > 0) {
+      const src = mainPlayer.attr('src') || mainPlayer.attr('data-src') || '';
+      if (src) {
+        serverData.push({ name: 'GANTI PLAYER', url: src });
       }
-      
-      // Also try to get iframe without ID
-      if (result.length === 0) {
-        const iframes = document.querySelectorAll('iframe[src*="player"], iframe[src*="embed"]');
-        iframes.forEach(iframe => {
-          const src = (iframe as HTMLIFrameElement).src;
-          if (src && !result.some(s => s.url === src)) {
-            result.push({ name: 'PLAYER', url: src });
-          }
-        });
+    }
+    
+    // Pattern 2: Get all iframes (player/embed)
+    $('iframe').each((_, el) => {
+      const src = $(el).attr('src') || $(el).attr('data-src') || '';
+      if (src && !src.includes('facebook') && !src.includes('twitter') && 
+          !src.includes('ads') && !serverData.some(s => s.url === src)) {
+        serverData.push({ name: 'PLAYER', url: src });
       }
-      
-      // Get all server tab links - multiple selector patterns
-      // Pattern 1: Links with playeriframe.sbs
-      document.querySelectorAll('a[href*="playeriframe.sbs"]').forEach((el) => {
-        const link = el as HTMLAnchorElement;
-        const name = link.textContent?.trim() || 'Server';
-        const href = link.href;
-        
-        if (href && !result.some(s => s.url === href)) {
-          result.push({ name, url: href });
-        }
-      });
-      
-      // Pattern 2: Server tab buttons with data attributes
-      document.querySelectorAll('[data-url], [data-src], [data-video]').forEach(el => {
-        const url = el.getAttribute('data-url') || el.getAttribute('data-src') || el.getAttribute('data-video') || '';
-        const name = el.textContent?.trim() || 'Server';
-        if (url && !result.some(s => s.url === url)) {
-          result.push({ name, url });
-        }
-      });
-      
-      // Pattern 3: Look for common server names in link text
-      const serverNames = ['P2P', 'TURBOVIP', 'CAST', 'HYDRAX', 'HD', 'SERVER', 'PLAYER'];
-      document.querySelectorAll('a[href]').forEach(el => {
-        const link = el as HTMLAnchorElement;
-        const name = link.textContent?.trim().toUpperCase() || '';
-        const href = link.href;
-        
-        // Check if the text matches known server names
-        const isServer = serverNames.some(sn => name.includes(sn));
-        const isPlayerUrl = href.includes('player') || href.includes('embed') || href.includes('stream');
-        
-        if ((isServer || isPlayerUrl) && href && !result.some(s => s.url === href) && !href.includes('/episode-')) {
-          result.push({ name: link.textContent?.trim() || 'Server', url: href });
-        }
-      });
-      
-      // Pattern 4: Look in the player area for tabs
-      const playerArea = document.querySelector('.player-area, .player-tabs, .tabs, .server-list');
-      if (playerArea) {
-        playerArea.querySelectorAll('a[href]').forEach(el => {
-          const link = el as HTMLAnchorElement;
-          const name = link.textContent?.trim() || 'Server';
-          const href = link.href;
-          if (href && !result.some(s => s.url === href) && !href.includes('/episode-')) {
-            result.push({ name, url: href });
-          }
-        });
-      }
-      
-      return result;
     });
-
-    await browser.close();
-
-    // Only keep the 4 valid servers: GANTI PLAYER, TURBOVIP, CAST, HYDRAX
-    const validServerNames = ['GANTI PLAYER', 'TURBOVIP', 'CAST', 'HYDRAX', 'P2P'];
+    
+    // Pattern 3: Links with playeriframe.sbs
+    $('a[href*="playeriframe.sbs"]').each((_, el) => {
+      const name = $(el).text().trim() || 'Server';
+      const href = $(el).attr('href') || '';
+      if (href && !serverData.some(s => s.url === href)) {
+        serverData.push({ name, url: href });
+      }
+    });
+    
+    // Pattern 4: Elements with data-url, data-src, data-video attributes
+    $('[data-url], [data-src], [data-video]').each((_, el) => {
+      const dataUrl = $(el).attr('data-url') || $(el).attr('data-src') || $(el).attr('data-video') || '';
+      const name = $(el).text().trim() || 'Server';
+      if (dataUrl && dataUrl.startsWith('http') && !serverData.some(s => s.url === dataUrl)) {
+        serverData.push({ name, url: dataUrl });
+      }
+    });
+    
+    // Pattern 5: Links with known server names
+    const serverNames = ['P2P', 'TURBOVIP', 'CAST', 'HYDRAX', 'HD', 'SERVER', 'PLAYER'];
+    $('a[href]').each((_, el) => {
+      const name = ($(el).text().trim() || '').toUpperCase();
+      const href = $(el).attr('href') || '';
+      
+      const isServer = serverNames.some(sn => name.includes(sn));
+      const isPlayerUrl = href.includes('player') || href.includes('embed') || href.includes('stream');
+      
+      if ((isServer || isPlayerUrl) && href && href.startsWith('http') && 
+          !serverData.some(s => s.url === href) && !href.includes('/episode-')) {
+        serverData.push({ name: $(el).text().trim() || 'Server', url: href });
+      }
+    });
+    
+    // Filter to keep only valid servers
+    const validServerNames = ['GANTI PLAYER', 'TURBOVIP', 'CAST', 'HYDRAX', 'P2P', 'PLAYER'];
     const filteredServers = serverData.filter(s => {
       const name = (s.name || '').toUpperCase().trim();
       return validServerNames.some(valid => name.includes(valid));
     });
-
-    const servers: StreamServer[] = filteredServers.map((s, idx) => ({
+    
+    // Use filtered if available, otherwise use all found
+    const finalServers = filteredServers.length > 0 ? filteredServers : serverData;
+    
+    const servers: StreamServer[] = finalServers.map((s, idx) => ({
       name: s.name || `Server ${idx + 1}`,
       url: s.url,
       quality: 'HD',
     }));
 
-    console.log(`[LK21] Found ${servers.length} valid servers (filtered from ${serverData.length})`);
+    console.log(`[LK21] Found ${servers.length} servers for episode ${episodeSlug}`);
     
     if (servers.length > 0) {
       await setCache(cacheKey, servers);
