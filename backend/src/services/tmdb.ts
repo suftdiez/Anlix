@@ -465,3 +465,87 @@ export async function getTopRatedMovies(page: number = 1): Promise<{ data: Retur
   }
 }
 
+/**
+ * Search for a TV show on TMDB by name
+ */
+export async function searchTVShow(query: string, year?: string): Promise<{ id: number; name: string; poster_path: string | null; first_air_date: string; overview: string; vote_average: number } | null> {
+  try {
+    if (!getTmdbApiKey()) {
+      console.warn('[TMDB] No API key configured for TV search');
+      return null;
+    }
+
+    const params: Record<string, string | number> = {
+      api_key: getTmdbApiKey(),
+      language: 'id-ID',
+      query,
+    };
+    if (year) {
+      params.first_air_date_year = parseInt(year);
+    }
+
+    const response = await axios.get(`${TMDB_BASE_URL}/search/tv`, { params });
+    
+    if (response.data.results && response.data.results.length > 0) {
+      const show = response.data.results[0];
+      console.log(`[TMDB] Found TV show: "${show.name}" (ID: ${show.id})`);
+      return show;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('[TMDB] Error searching TV show:', error);
+    return null;
+  }
+}
+
+/**
+ * Get TV show details including seasons and episode counts from TMDB
+ */
+export async function getTVShowSeasons(tmdbId: number): Promise<{
+  seasons: Array<{ season_number: number; episode_count: number; name: string }>;
+  name: string;
+  poster_path: string | null;
+  overview: string;
+  first_air_date: string;
+  vote_average: number;
+  number_of_seasons: number;
+} | null> {
+  try {
+    if (!getTmdbApiKey()) {
+      return null;
+    }
+
+    const response = await axios.get(`${TMDB_BASE_URL}/tv/${tmdbId}`, {
+      params: {
+        api_key: getTmdbApiKey(),
+        language: 'id-ID',
+      },
+    });
+
+    const data = response.data;
+    console.log(`[TMDB] TV show "${data.name}": ${data.number_of_seasons} seasons`);
+    
+    return {
+      seasons: (data.seasons || [])
+        .filter((s: any) => s.season_number > 0)
+        .map((s: any) => ({
+          season_number: s.season_number,
+          episode_count: s.episode_count,
+          name: s.name,
+        })),
+      name: data.name,
+      poster_path: data.poster_path,
+      overview: data.overview || '',
+      first_air_date: data.first_air_date || '',
+      vote_average: data.vote_average || 0,
+      number_of_seasons: data.number_of_seasons || 0,
+    };
+  } catch (error) {
+    console.error('[TMDB] Error fetching TV show details:', error);
+    return null;
+  }
+}
+
+// Export helper functions for use in other modules
+export { generateSlug, getPosterUrl };

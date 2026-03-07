@@ -1260,172 +1260,70 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
     const seriesYear = yearMatch ? yearMatch[1] : '';
     const baseName = seriesYear ? slug.replace(`-${seriesYear}`, '') : slug;
     
-    console.log(`[LK21] Series detail (cheerio): baseName="${baseName}", year="${seriesYear}"`);
+    // Convert slug to searchable title: "breaking-bad" -> "Breaking Bad"
+    const searchTitle = baseName.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     
-    // Episode URL format: base-name-season-X-episode-Y-year
-    const firstEpisodeSlug = `${baseName}-season-1-episode-1${seriesYear ? '-' + seriesYear : ''}`;
-    const firstEpisodeUrl = `${SERIES_URL}/${firstEpisodeSlug}`;
-    console.log('[LK21] Fetching first episode:', firstEpisodeUrl);
+    console.log(`[LK21] Series detail: searching TMDB for "${searchTitle}" (${seriesYear})`);
     
-    let html: string;
-    try {
-      html = await throttledRequest(firstEpisodeUrl);
-    } catch (err) {
-      console.error('[LK21] Failed to fetch first episode page:', err);
+    // Import TMDB functions
+    const { searchTVShow, getTVShowSeasons, getPosterUrl } = await import('../services/tmdb');
+    
+    // Search for the TV show on TMDB
+    const tvShow = await searchTVShow(searchTitle, seriesYear || undefined);
+    
+    if (!tvShow) {
+      console.log(`[LK21] TV show "${searchTitle}" not found on TMDB`);
       return null;
     }
     
-    const $ = cheerio.load(html);
+    // Get detailed season/episode data from TMDB
+    const tvDetails = await getTVShowSeasons(tvShow.id);
     
-    // Detect redirect/blocking page (only match specific redirect phrase, not the brand name)
-    const pageTitle = $('h1').first().text().trim() || $('title').text().trim();
-    if (pageTitle.toLowerCase().includes('anda akan dialihkan') || 
-        pageTitle.toLowerCase().includes('akan dialihkan ke')) {
-      console.log(`[LK21] Detected redirect/blocking page for series ${slug}`);
+    if (!tvDetails || tvDetails.seasons.length === 0) {
+      console.log(`[LK21] No season data from TMDB for "${searchTitle}"`);
       return null;
     }
     
-    // Extract title - remove Season/Episode suffix
-    let title = pageTitle
-      .replace(/\s*[-–]\s*Season.*$/i, '')
-      .replace(/\s*Season.*$/i, '')
-      .replace(/\s*Nonton\s*/i, '')
-      .trim();
-    if (!title || title.length < 2) {
-      title = slug.replace(/-\d{4}$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
-    
-    // Poster
-    const poster = $('meta[property="og:image"]').attr('content') ||
-                   $('.poster img, .thumb img, .cover img').attr('src') || '';
-    
-    // Find total seasons from "Season X dari Y" text
-    let totalSeasons = 0;
-    const bodyText = $('body').text().toLowerCase();
-    const seasonDariMatch = bodyText.match(/season\s*\d+\s*dari\s*(\d+)/i);
-    if (seasonDariMatch) {
-      totalSeasons = parseInt(seasonDariMatch[1]);
-    }
-    
-    // Fallback: Look for season links/buttons to determine total seasons
-    if (totalSeasons === 0) {
-      const seasonNumbers: number[] = [];
-      $('a').each((_, el) => {
-        const href = $(el).attr('href') || '';
-        const seasonMatch = href.match(/season-(\d+)-episode/);
-        if (seasonMatch) {
-          seasonNumbers.push(parseInt(seasonMatch[1]));
-        }
-      });
-      if (seasonNumbers.length > 0) {
-        totalSeasons = Math.max(...seasonNumbers);
-      }
-    }
-    
-    // If still no seasons found, assume 1 season
-    if (totalSeasons === 0) {
-      totalSeasons = 1;
-    }
-    
-    console.log(`[LK21] Found series "${title}" with ${totalSeasons} seasons`);
-    
-    // Initialize seasons
+    // Build seasons and episodes from TMDB data
     const seasons: Season[] = [];
     const episodes: Episode[] = [];
     
-    for (let i = 1; i <= totalSeasons; i++) {
-      seasons.push({ number: i, episodeCount: 0 });
-    }
-    
-    // For each season, visit episode 1 page and extract episode links/buttons
-    for (let seasonNum = 1; seasonNum <= totalSeasons; seasonNum++) {
-      const seasonEpSlug = `${baseName}-season-${seasonNum}-episode-1${seriesYear ? '-' + seriesYear : ''}`;
-      const seasonEpUrl = `${SERIES_URL}/${seasonEpSlug}`;
-      console.log(`[LK21] Scraping season ${seasonNum}: ${seasonEpUrl}`);
+    for (const tmdbSeason of tvDetails.seasons) {
+      seasons.push({
+        number: tmdbSeason.season_number,
+        episodeCount: tmdbSeason.episode_count,
+      });
       
-      try {
-        // Reuse the first page HTML if this is season 1
-        let seasonHtml: string;
-        if (seasonNum === 1) {
-          seasonHtml = html;
-        } else {
-          seasonHtml = await throttledRequest(seasonEpUrl);
-        }
-        
-        const $s = cheerio.load(seasonHtml);
-        const seenNums = new Set<number>();
-        
-        // Look for episode links/buttons (small numbered links)
-        $s('a').each((_, el) => {
-          const text = $s(el).text().trim();
-          const href = $s(el).attr('href') || '';
-          
-          // Check if text is just a small number (episode number)
-          if (/^[1-9]\d?$/.test(text)) {
-            const epNum = parseInt(text);
-            
-            // Verify this looks like an episode link
-            const isEpisodeLink = href.includes(`-season-${seasonNum}-episode-`);
-            const isSimpleNumber = epNum >= 1 && epNum <= 50;
-            
-            if ((isEpisodeLink || isSimpleNumber) && !seenNums.has(epNum)) {
-              seenNums.add(epNum);
-              const epSlug = `${baseName}-season-${seasonNum}-episode-${epNum}${seriesYear ? '-' + seriesYear : ''}`;
-              episodes.push({
-                season: seasonNum,
-                episode: epNum,
-                title: `Episode ${epNum}`,
-                slug: epSlug,
-                url: `${SERIES_URL}/${epSlug}`,
-              });
-            }
-          }
+      // Generate episode entries with nontondrama.my streaming URLs
+      for (let epNum = 1; epNum <= tmdbSeason.episode_count; epNum++) {
+        const epSlug = `${baseName}-season-${tmdbSeason.season_number}-episode-${epNum}${seriesYear ? '-' + seriesYear : ''}`;
+        episodes.push({
+          season: tmdbSeason.season_number,
+          episode: epNum,
+          title: `Episode ${epNum}`,
+          slug: epSlug,
+          url: `${SERIES_URL}/${epSlug}`,
         });
-        
-        // Fallback: Look for links containing "episode-N" pattern
-        if (seenNums.size === 0) {
-          $s(`a[href*="season-${seasonNum}-episode-"]`).each((_, el) => {
-            const href = $s(el).attr('href') || '';
-            const epMatch = href.match(/episode-(\d+)/);
-            if (epMatch) {
-              const epNum = parseInt(epMatch[1]);
-              if (!seenNums.has(epNum)) {
-                seenNums.add(epNum);
-                const epSlug = `${baseName}-season-${seasonNum}-episode-${epNum}${seriesYear ? '-' + seriesYear : ''}`;
-                episodes.push({
-                  season: seasonNum,
-                  episode: epNum,
-                  title: `Episode ${epNum}`,
-                  slug: epSlug,
-                  url: `${SERIES_URL}/${epSlug}`,
-                });
-              }
-            }
-          });
-        }
-        
-        // Update season episode count
-        const maxEp = seenNums.size > 0 ? Math.max(...seenNums) : 0;
-        seasons[seasonNum - 1].episodeCount = maxEp;
-        
-        console.log(`[LK21] Season ${seasonNum}: ${seenNums.size} episodes (max: ${maxEp})`);
-      } catch (err) {
-        console.error(`[LK21] Error scraping season ${seasonNum}:`, err);
-        // If season page fails, it might not exist - that's OK
       }
     }
     
     // Sort episodes
     episodes.sort((a, b) => a.season - b.season || a.episode - b.episode);
     
+    // Get poster from TMDB
+    const poster = tvDetails.poster_path ? getPosterUrl(tvDetails.poster_path) : '';
+    const title = tvDetails.name || searchTitle;
+    const synopsis = tvDetails.overview || 'Tidak ada sinopsis.';
+    const rating = tvDetails.vote_average ? tvDetails.vote_average.toFixed(1) : '';
+    
     const detail: SeriesDetail = {
       id: slug,
       title: title.substring(0, 150),
       slug,
       poster,
-      year: seriesYear,
-      rating: '',
-      synopsis: 'Tidak ada sinopsis.',
+      year: seriesYear || (tvDetails.first_air_date ? tvDetails.first_air_date.split('-')[0] : ''),
+      rating,
+      synopsis,
       genres: [],
       servers: [],
       url: `${SERIES_URL}/${slug}`,
@@ -1434,11 +1332,9 @@ export async function getSeriesDetail(slug: string): Promise<SeriesDetail | null
       episodes,
     };
     
-    console.log(`[LK21] Final: ${seasons.length} seasons, ${episodes.length} episodes`);
+    console.log(`[LK21] TMDB series: "${title}" - ${seasons.length} seasons, ${episodes.length} episodes`);
     
-    if (episodes.length > 0) {
-      await setCache(cacheKey, detail);
-    }
+    await setCache(cacheKey, detail);
     return detail;
   } catch (error) {
     console.error('[LK21] Error fetching series detail:', error);
