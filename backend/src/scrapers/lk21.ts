@@ -355,94 +355,127 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
   const cached = await getCached<{ data: FilmItem[]; hasNext: boolean }>(cacheKey);
   if (cached) return cached;
 
-  let browser = null;
-  
   try {
-    // Dynamic import of puppeteer
-    const puppeteer = await import('puppeteer');
-    
+    // Try cheerio-based search on LK21 first
     const url = page > 1 
       ? `${BASE_URL}/search/page/${page}/?s=${encodeURIComponent(query)}`
       : `${BASE_URL}/search?s=${encodeURIComponent(query)}`;
-    console.log(`[LK21] Searching with Puppeteer: ${url}`);
+    console.log(`[LK21] Searching (cheerio): ${url}`);
     
-    // Launch headless browser
-    browser = await puppeteer.default.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    const html = await throttledRequest(url);
+    const $ = cheerio.load(html);
+    
+    const films: FilmItem[] = [];
+    const seen = new Set<string>();
+    
+    // Find all movie cards with images and links
+    $('a').each((_, el) => {
+      const img = $(el).find('img');
+      if (img.length === 0) return;
+      
+      const href = $(el).attr('href') || '';
+      if (!href || href.includes('/genre/') || href.includes('/country/') || 
+          href.includes('/page/') || href.includes('/search/') || href.includes('/year/')) {
+        return;
+      }
+      
+      const title = $(el).attr('title') || img.attr('alt') || '';
+      if (!title || title.length < 3) return;
+      
+      let slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
+      if (!slug || seen.has(slug) || slug.includes('/') || slug.length < 3) return;
+      
+      const poster = img.attr('src') || img.attr('data-src') || '';
+      const yearMatch = slug.match(/-(\d{4})$/);
+      
+      seen.add(slug);
+      films.push({
+        id: slug,
+        title: title.substring(0, 150),
+        slug,
+        poster,
+        year: yearMatch ? yearMatch[1] : '',
+        url: href.startsWith('http') ? href : `${BASE_URL}/${slug}`,
+      });
     });
     
-    const browserPage = await browser.newPage();
-    await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
-    // Navigate and wait for search results to load
-    await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    
-    // Wait for results to render (LK21 uses JS to load results)
-    await browserPage.waitForSelector('.gallery-grid a, #results a, .movie-list a', { timeout: 10000 }).catch(() => {});
-    
-    // Give extra time for rendering
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Extract film data from rendered page
-    const films = await browserPage.evaluate((baseUrl: string) => {
-      const results: any[] = [];
-      const seen = new Set<string>();
-      
-      // Find all movie cards in results
-      document.querySelectorAll('a').forEach((el) => {
-        const img = el.querySelector('img');
-        if (!img) return;
-        
-        const href = el.getAttribute('href') || '';
-        if (!href || href.includes('/genre/') || href.includes('/country/') || 
-            href.includes('/page/') || href.includes('/search/') || href.includes('/year/')) {
-          return;
-        }
-        
-        const title = el.getAttribute('title') || img.getAttribute('alt') || '';
-        if (!title || title.length < 3) return;
-        
-        let slug = href.replace(baseUrl, '').replace(/^\//, '').replace(/\/$/, '');
-        if (!slug || seen.has(slug) || slug.includes('/') || slug.length < 3) return;
-        
-        const poster = img.getAttribute('src') || img.getAttribute('data-src') || '';
-        const yearMatch = slug.match(/-(\d{4})$/);
-        
-        seen.add(slug);
-        results.push({
-          id: slug,
-          title: title.substring(0, 150),
-          slug,
-          poster,
-          year: yearMatch ? yearMatch[1] : '',
-          url: href.startsWith('http') ? href : `${baseUrl}/${slug}`,
-        });
-      });
-      
-      return results;
-    }, BASE_URL);
-    
-    await browser.close();
-    browser = null;
-    
-    // Check for pagination
-    const hasNext = films.length >= 20;
-    
-    console.log(`[LK21] Search "${query}" page ${page}: Found ${films.length} films via Puppeteer`);
-    
-    const result = { data: films, hasNext };
+    console.log(`[LK21] Cheerio search "${query}": Found ${films.length} films`);
     
     if (films.length > 0) {
+      const result = { data: films, hasNext: films.length >= 20 };
       await setCache(cacheKey, result);
+      return result;
     }
     
+    // Fallback: Search TMDB if LK21 returned no results (likely blocked on Render)
+    console.log(`[LK21] No LK21 results, falling back to TMDB search for "${query}"`);
+    const { searchTVShow } = await import('../services/tmdb');
+    const axios = (await import('axios')).default;
+    
+    const tmdbApiKey = process.env.TMDB_API_KEY || '';
+    if (!tmdbApiKey) {
+      return { data: [], hasNext: false };
+    }
+    
+    // Search both movies and TV shows on TMDB
+    const [movieRes, tvRes] = await Promise.all([
+      axios.get('https://api.themoviedb.org/3/search/movie', {
+        params: { api_key: tmdbApiKey, language: 'id-ID', query, page },
+      }).catch(() => ({ data: { results: [] } })),
+      axios.get('https://api.themoviedb.org/3/search/tv', {
+        params: { api_key: tmdbApiKey, language: 'id-ID', query, page },
+      }).catch(() => ({ data: { results: [] } })),
+    ]);
+    
+    const tmdbFilms: FilmItem[] = [];
+    
+    // Process movies
+    for (const movie of movieRes.data.results || []) {
+      const year = movie.release_date ? movie.release_date.split('-')[0] : '';
+      const title = movie.title || movie.original_title || '';
+      const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-') + (year ? `-${year}` : '');
+      
+      if (!seen.has(slug) && title) {
+        seen.add(slug);
+        tmdbFilms.push({
+          id: slug,
+          title,
+          slug,
+          poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : '',
+          year,
+          url: `https://www.themoviedb.org/movie/${movie.id}`,
+        });
+      }
+    }
+    
+    // Process TV shows
+    for (const show of tvRes.data.results || []) {
+      const year = show.first_air_date ? show.first_air_date.split('-')[0] : '';
+      const title = show.name || show.original_name || '';
+      const slug = title.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-') + (year ? `-${year}` : '');
+      
+      if (!seen.has(slug) && title) {
+        seen.add(slug);
+        tmdbFilms.push({
+          id: slug,
+          title,
+          slug,
+          poster: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : '',
+          year,
+          url: `https://www.themoviedb.org/tv/${show.id}`,
+        });
+      }
+    }
+    
+    console.log(`[LK21] TMDB search "${query}": Found ${tmdbFilms.length} results`);
+    
+    const result = { data: tmdbFilms, hasNext: tmdbFilms.length >= 20 };
+    if (tmdbFilms.length > 0) {
+      await setCache(cacheKey, result);
+    }
     return result;
   } catch (error) {
-    console.error('Error searching films with Puppeteer:', error);
-    if (browser) {
-      await browser.close();
-    }
+    console.error('Error searching films:', error);
     return { data: [], hasNext: false };
   }
 }
