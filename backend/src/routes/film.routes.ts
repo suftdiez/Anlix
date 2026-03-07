@@ -5,12 +5,19 @@ const router = Router();
 
 /**
  * GET /api/film/latest
- * Get latest films
+ * Get latest films (LK21 primary, TMDB fallback)
  */
 router.get('/latest', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const result = await lk21.getLatestFilms(page);
+    let result = await lk21.getLatestFilms(page);
+    
+    // Fallback to TMDB if LK21 returns empty (blocked on Render)
+    if (!result.data || result.data.length === 0) {
+      console.log('[Film] LK21 returned empty, falling back to TMDB popular movies');
+      const tmdbResult = await tmdb.getPopularMovies(page);
+      result = { data: tmdbResult.data as any, hasNext: tmdbResult.hasNext };
+    }
     
     res.json({
       success: true,
@@ -20,17 +27,32 @@ router.get('/latest', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching latest films:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    // Try TMDB as last resort on error
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const tmdbResult = await tmdb.getPopularMovies(page);
+      res.json({ success: true, page, hasNext: tmdbResult.hasNext, data: tmdbResult.data });
+    } catch {
+      res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    }
   }
 });
 
 /**
  * GET /api/film/trending
- * Get trending/popular films
+ * Get trending/popular films (LK21 primary, TMDB fallback)
  */
 router.get('/trending', async (req: Request, res: Response) => {
   try {
     const result = await lk21.getTrendingFilms();
+    
+    // Fallback to TMDB if LK21 returns empty
+    if (!result.data || result.data.length === 0) {
+      console.log('[Film] LK21 trending empty, falling back to TMDB popular');
+      const tmdbResult = await tmdb.getPopularMovies(1);
+      res.json({ success: true, hasNext: tmdbResult.hasNext, data: tmdbResult.data });
+      return;
+    }
     
     res.json({
       success: true,
@@ -39,7 +61,12 @@ router.get('/trending', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching trending films:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    try {
+      const tmdbResult = await tmdb.getPopularMovies(1);
+      res.json({ success: true, hasNext: tmdbResult.hasNext, data: tmdbResult.data });
+    } catch {
+      res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    }
   }
 });
 
@@ -175,13 +202,20 @@ router.get('/year/:year', async (req: Request, res: Response) => {
 
 /**
  * GET /api/film/toprated
- * Get top rated films
+ * Get top rated films (LK21 primary, TMDB fallback)
  */
 router.get('/toprated', async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     
-    const result = await lk21.getTopRatedFilms(page);
+    let result = await lk21.getTopRatedFilms(page);
+    
+    // Fallback to TMDB if LK21 returns empty
+    if (!result.data || result.data.length === 0) {
+      console.log('[Film] LK21 toprated empty, falling back to TMDB top rated');
+      const tmdbResult = await tmdb.getTopRatedMovies(page);
+      result = { data: tmdbResult.data as any, hasNext: tmdbResult.hasNext };
+    }
     
     res.json({
       success: true,
@@ -191,7 +225,13 @@ router.get('/toprated', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Error fetching top rated films:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const tmdbResult = await tmdb.getTopRatedMovies(page);
+      res.json({ success: true, page, hasNext: tmdbResult.hasNext, data: tmdbResult.data });
+    } catch {
+      res.status(500).json({ success: false, error: 'Failed to fetch films' });
+    }
   }
 });
 

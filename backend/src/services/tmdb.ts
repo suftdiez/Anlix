@@ -360,7 +360,108 @@ export async function getTrailerByTitle(title: string, year?: string): Promise<T
 export default {
   getUpcomingMovies,
   getNowPlayingMovies,
+  getPopularMovies,
+  getTopRatedMovies,
   searchMovie,
   getMovieTrailer,
   getTrailerByTitle,
+  tmdbToFilmItem,
 };
+
+/**
+ * Convert TMDB movie data to LK21-compatible FilmItem format
+ * Used as fallback when LK21 scraper fails on Render
+ */
+export function tmdbToFilmItem(movie: TMDBMovie): {
+  id: string; title: string; slug: string; poster: string;
+  year?: string; rating?: string; quality?: string; url: string;
+} {
+  const year = movie.release_date ? movie.release_date.substring(0, 4) : '';
+  const slug = generateSlug(movie.title || movie.original_title) + (year ? `-${year}` : '');
+  return {
+    id: slug,
+    title: movie.title || movie.original_title,
+    slug,
+    poster: getPosterUrl(movie.poster_path),
+    year,
+    rating: movie.vote_average ? movie.vote_average.toFixed(1) : undefined,
+    quality: 'HD',
+    url: `https://www.themoviedb.org/movie/${movie.id}`,
+  };
+}
+
+/**
+ * Get popular movies from TMDB (fallback for LK21 latest/trending)
+ */
+export async function getPopularMovies(page: number = 1): Promise<{ data: ReturnType<typeof tmdbToFilmItem>[]; hasNext: boolean }> {
+  const cacheKey = `tmdb:popular:${page}`;
+  const cached = await getCached<{ data: ReturnType<typeof tmdbToFilmItem>[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    if (!getTmdbApiKey()) {
+      console.warn('[TMDB] No API key configured for popular movies');
+      return { data: [], hasNext: false };
+    }
+
+    const response = await axios.get<TMDBResponse>(`${TMDB_BASE_URL}/movie/popular`, {
+      params: {
+        api_key: getTmdbApiKey(),
+        language: 'id-ID',
+        page,
+        region: 'ID',
+      },
+    });
+
+    const films = response.data.results.map(tmdbToFilmItem);
+    const result = {
+      data: films,
+      hasNext: page < response.data.total_pages,
+    };
+
+    await setCache(cacheKey, result);
+    console.log(`[TMDB] Popular movies page ${page}: ${films.length} films`);
+    return result;
+  } catch (error) {
+    console.error('[TMDB] Error fetching popular movies:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
+/**
+ * Get top rated movies from TMDB (fallback for LK21 top rated)
+ */
+export async function getTopRatedMovies(page: number = 1): Promise<{ data: ReturnType<typeof tmdbToFilmItem>[]; hasNext: boolean }> {
+  const cacheKey = `tmdb:toprated:${page}`;
+  const cached = await getCached<{ data: ReturnType<typeof tmdbToFilmItem>[]; hasNext: boolean }>(cacheKey);
+  if (cached) return cached;
+
+  try {
+    if (!getTmdbApiKey()) {
+      return { data: [], hasNext: false };
+    }
+
+    const response = await axios.get<TMDBResponse>(`${TMDB_BASE_URL}/movie/top_rated`, {
+      params: {
+        api_key: getTmdbApiKey(),
+        language: 'id-ID',
+        page,
+        region: 'ID',
+      },
+    });
+
+    const films = response.data.results.map(tmdbToFilmItem);
+    const result = {
+      data: films,
+      hasNext: page < response.data.total_pages,
+    };
+
+    await setCache(cacheKey, result);
+    console.log(`[TMDB] Top rated movies page ${page}: ${films.length} films`);
+    return result;
+  } catch (error) {
+    console.error('[TMDB] Error fetching top rated movies:', error);
+    return { data: [], hasNext: false };
+  }
+}
+
