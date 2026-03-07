@@ -533,89 +533,55 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
     const durationText = $('[itemprop="duration"], .duration, .runtime').text();
     const duration = durationText.match(/\d+:\d+|\d+\s*(?:min|menit)/i)?.[0] || '';
 
-    // Streaming servers - use Puppeteer to get dynamically loaded server tabs
+    // Streaming servers - extract from HTML using cheerio (no Puppeteer)
     const servers: StreamServer[] = [];
     
-    try {
-      const puppeteer = await import('puppeteer');
-      const browser = await puppeteer.default.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      });
-      
-      const browserPage = await browser.newPage();
-      await browserPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-      await browserPage.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      // Wait for player to load (LK21 shows "Tunggu" message while loading)
-      await new Promise(r => setTimeout(r, 5000));
-      
-      // Extract server tabs from the page
-      const serverData = await browserPage.evaluate(() => {
-        const result: Array<{name: string, url: string}> = [];
-        
-        // Get main player iframe first
-        const mainPlayer = document.getElementById('main-player') as HTMLIFrameElement;
-        if (mainPlayer && mainPlayer.src) {
-          result.push({
-            name: 'GANTI PLAYER',
-            url: mainPlayer.src,
-          });
-        }
-        
-        // Get all server tab links (P2P, TURBOVIP, CAST, HYDRAX)
-        document.querySelectorAll('a[href*="playeriframe.sbs"]').forEach((el) => {
-          const link = el as HTMLAnchorElement;
-          const name = link.textContent?.trim() || 'Server';
-          const href = link.href;
-          
-          // Avoid duplicates
-          if (href && !result.some(s => s.url === href)) {
-            result.push({ name, url: href });
-          }
-        });
-        
-        // Also try other possible iframe embed sources
-        document.querySelectorAll('a[href*="embed"], a[href*="player"]').forEach((el) => {
-          const link = el as HTMLAnchorElement;
-          const name = link.textContent?.trim() || 'Server';
-          const href = link.href;
-          
-          if (href && href.startsWith('http') && !result.some(s => s.url === href)) {
-            result.push({ name, url: href });
-          }
-        });
-        
-        return result;
-      });
-      
-      await browser.close();
-      
-      // Convert to StreamServer format
-      serverData.forEach((s, idx) => {
-        servers.push({
-          name: s.name || `Server ${idx + 1}`,
-          url: s.url,
-          quality: 'HD',
-        });
-      });
-      
-      console.log(`[LK21] Found ${servers.length} servers for ${slug}`);
-    } catch (puppeteerError) {
-      console.error('[LK21] Puppeteer server extraction failed:', puppeteerError);
-      
-      // Fallback to Cheerio-based extraction
-      $('iframe').each((_, el) => {
-        const src = $(el).attr('src') || $(el).attr('data-src') || '';
-        if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
-          servers.push({
-            name: 'Player 1',
-            url: src,
-            quality: 'HD',
-          });
-        }
-      });
+    // Pattern 1: Get main player iframe
+    const mainPlayer = $('#main-player');
+    if (mainPlayer.length > 0) {
+      const src = mainPlayer.attr('src') || mainPlayer.attr('data-src') || '';
+      if (src) {
+        servers.push({ name: 'GANTI PLAYER', url: src, quality: 'HD' });
+      }
     }
+    
+    // Pattern 2: Get all iframes that look like players
+    $('iframe').each((_, el) => {
+      const src = $(el).attr('src') || $(el).attr('data-src') || '';
+      if (src && !src.includes('facebook') && !src.includes('twitter') && 
+          !src.includes('ads') && !servers.some(s => s.url === src)) {
+        servers.push({ name: 'Player', url: src, quality: 'HD' });
+      }
+    });
+    
+    // Pattern 3: Links with playeriframe.sbs
+    $('a[href*="playeriframe.sbs"]').each((_, el) => {
+      const name = $(el).text().trim() || 'Server';
+      const href = $(el).attr('href') || '';
+      if (href && !servers.some(s => s.url === href)) {
+        servers.push({ name, url: href, quality: 'HD' });
+      }
+    });
+    
+    // Pattern 4: Elements with data-url, data-src, data-video
+    $('[data-url], [data-src], [data-video]').each((_, el) => {
+      const dataUrl = $(el).attr('data-url') || $(el).attr('data-src') || $(el).attr('data-video') || '';
+      const name = $(el).text().trim() || 'Server';
+      if (dataUrl && dataUrl.startsWith('http') && !servers.some(s => s.url === dataUrl)) {
+        servers.push({ name, url: dataUrl, quality: 'HD' });
+      }
+    });
+    
+    // Pattern 5: Links with embed/player in URL
+    $('a[href*="embed"], a[href*="player"]').each((_, el) => {
+      const name = $(el).text().trim() || 'Server';
+      const href = $(el).attr('href') || '';
+      if (href && href.startsWith('http') && !servers.some(s => s.url === href)) {
+        servers.push({ name, url: href, quality: 'HD' });
+      }
+    });
+    
+    console.log(`[LK21] Found ${servers.length} servers for ${slug}`);
 
     // Extract related films ("Movie Terkait" section)
     const relatedFilms: FilmItem[] = [];

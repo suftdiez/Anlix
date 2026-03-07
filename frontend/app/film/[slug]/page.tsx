@@ -85,10 +85,30 @@ export default function FilmDetailPage() {
           }
           setFilm(response.data);
         } else {
+          // Film not found - try series detail as fallback
+          try {
+            const seriesResponse = await filmApi.getSeriesDetail(slug);
+            if (seriesResponse.success && seriesResponse.data) {
+              setFilm({ ...seriesResponse.data, isSeries: true });
+              return;
+            }
+          } catch {
+            // Series also not found
+          }
           setError('Film tidak ditemukan');
         }
       } catch (err) {
         console.error('Failed to fetch film detail:', err);
+        // On error, also try series detail as fallback
+        try {
+          const seriesResponse = await filmApi.getSeriesDetail(slug);
+          if (seriesResponse.success && seriesResponse.data) {
+            setFilm({ ...seriesResponse.data, isSeries: true });
+            return;
+          }
+        } catch {
+          // Series also failed
+        }
         setError('Gagal memuat data film');
       } finally {
         setIsLoading(false);
