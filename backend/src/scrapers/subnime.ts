@@ -2,7 +2,7 @@
 /// <reference lib="dom.iterable" />
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import puppeteer from 'puppeteer';
+// Puppeteer removed - Subnime works with Cheerio since data-url attributes are in static HTML
 import redis from '../config/redis';
 
 const BASE_URL = 'https://subnime.com';
@@ -136,33 +136,7 @@ async function setCache(key: string, data: unknown): Promise<void> {
   }
 }
 
-// ============ PUPPETEER HELPER ============
-
-async function getPageWithPuppeteer(url: string): Promise<string> {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    });
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    
-    // Wait a bit for dynamic content
-    await delay(1000);
-    
-    const html = await page.content();
-    return html;
-  } finally {
-    if (browser) await browser.close();
-  }
-}
+// Puppeteer helper removed - using throttledRequest (axios) for all requests
 
 // ============ SCRAPER FUNCTIONS ============
 
@@ -273,27 +247,11 @@ export async function getAnimeDetail(slug: string): Promise<AnimeDetail | null> 
   const cached = await getCached<AnimeDetail>(cacheKey);
   if (cached) return cached;
 
-  let browser;
   try {
     const url = `${BASE_URL}/anime/${slug}`;
     
-    // Launch Puppeteer for full page interaction
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    });
-    const page = await browser.newPage();
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-    await delay(1500);
-
-    // Get basic info from the page HTML
-    const html = await page.content();
+    // Use Cheerio instead of Puppeteer - Subnime serves episode links in static HTML
+    const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     // Title
@@ -340,124 +298,33 @@ export async function getAnimeDetail(slug: string): Promise<AnimeDetail | null> 
       }
     });
 
-    // ===== EPISODES: Click Episodes tab, then iterate through range dropdown =====
+    // ===== EPISODES: Parse from static HTML =====
     const episodes: Episode[] = [];
     const seenEps = new Set<string>();
 
-    // Click Episodes tab
-    try {
-      await page.evaluate(() => {
-        const tabs = document.querySelectorAll('.tab-btn');
-        for (const tab of tabs) {
-          if (tab.textContent?.includes('Episode')) {
-            (tab as HTMLElement).click();
-            return;
-          }
-        }
+    // Episode links are in static HTML as a.episode-grid-item or .episode-list-item
+    $('a.episode-grid-item, a.episode-list-item, a[href*="episode-"]').each((_, el) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+      const text = $el.text().trim();
+      
+      if (!href || !href.includes('episode')) return;
+      
+      const epNumMatch = text.match(/(\d+)/) || href.match(/episode-(\d+)/);
+      const epNum = epNumMatch ? epNumMatch[1] : '';
+      const epSlug = href.split('/').filter(Boolean).pop() || '';
+      
+      if (seenEps.has(epNum) || !epSlug || !epNum) return;
+      seenEps.add(epNum);
+      
+      episodes.push({
+        id: epSlug,
+        number: epNum,
+        title: `Episode ${epNum}`,
+        slug: epSlug,
+        url: href.startsWith('http') ? href : `${BASE_URL}/${epSlug}`,
       });
-      await delay(1000);
-    } catch (e) {
-      // Tab might not exist for some anime
-    }
-
-    // Get all range options from the dropdown
-    const rangeOptions = await page.evaluate(() => {
-      const select = document.querySelector('#episode-range-select, select') as HTMLSelectElement;
-      if (!select) return [];
-      return Array.from(select.options).map((opt, idx) => ({
-        value: opt.value,
-        text: opt.text,
-        index: idx,
-      }));
     });
-
-    if (rangeOptions.length > 0) {
-      // Iterate through each range in the dropdown
-      for (const option of rangeOptions) {
-        // Select this range
-        await page.evaluate((optValue: string) => {
-          const select = document.querySelector('#episode-range-select, select') as HTMLSelectElement;
-          if (select) {
-            select.value = optValue;
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            select.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }, option.value);
-        
-        // Wait for content to update
-        await delay(500);
-        
-        // Scrape episodes from current view
-        const rangeEpisodes = await page.evaluate(() => {
-          const eps: { href: string; text: string }[] = [];
-          const items = document.querySelectorAll('.episode-grid-item, .episode-list-item, #episode-grid-view a, #episode-list-view a, a[href*="episode-"]');
-          items.forEach(el => {
-            const link = el.tagName === 'A' ? el : el.querySelector('a');
-            if (link) {
-              eps.push({
-                href: (link as HTMLAnchorElement).href || link.getAttribute('href') || '',
-                text: link.textContent?.trim() || '',
-              });
-            }
-          });
-          return eps;
-        });
-
-        for (const ep of rangeEpisodes) {
-          if (!ep.href) continue;
-          
-          const epNumMatch = ep.text.match(/(\d+)/) || ep.href.match(/episode-(\d+)/);
-          const epNum = epNumMatch ? epNumMatch[1] : '';
-          const epSlug = ep.href.split('/').filter(Boolean).pop() || '';
-          
-          if (seenEps.has(epNum) || !epSlug) continue;
-          seenEps.add(epNum);
-          
-          episodes.push({
-            id: epSlug,
-            number: epNum,
-            title: `Episode ${epNum}`,
-            slug: epSlug,
-            url: ep.href.startsWith('http') ? ep.href : `${BASE_URL}/${epSlug}`,
-          });
-        }
-      }
-    } else {
-      // No dropdown - scrape all visible episodes directly
-      const visibleEpisodes = await page.evaluate(() => {
-        const eps: { href: string; text: string }[] = [];
-        const items = document.querySelectorAll('.episode-grid-item, .episode-list-item, #episode-grid-view a, #episode-list-view a, a[href*="episode-"]');
-        items.forEach(el => {
-          const link = el.tagName === 'A' ? el : el.querySelector('a');
-          if (link) {
-            eps.push({
-              href: (link as HTMLAnchorElement).href || link.getAttribute('href') || '',
-              text: link.textContent?.trim() || '',
-            });
-          }
-        });
-        return eps;
-      });
-
-      for (const ep of visibleEpisodes) {
-        if (!ep.href) continue;
-        
-        const epNumMatch = ep.text.match(/(\d+)/) || ep.href.match(/episode-(\d+)/);
-        const epNum = epNumMatch ? epNumMatch[1] : '';
-        const epSlug = ep.href.split('/').filter(Boolean).pop() || '';
-        
-        if (seenEps.has(epNum) || !epSlug) continue;
-        seenEps.add(epNum);
-        
-        episodes.push({
-          id: epSlug,
-          number: epNum,
-          title: `Episode ${epNum}`,
-          slug: epSlug,
-          url: ep.href.startsWith('http') ? ep.href : `${BASE_URL}/${epSlug}`,
-        });
-      }
-    }
 
     // Sort episodes by number
     episodes.sort((a, b) => parseInt(a.number) - parseInt(b.number));
@@ -487,8 +354,6 @@ export async function getAnimeDetail(slug: string): Promise<AnimeDetail | null> 
   } catch (error) {
     console.error('Error fetching anime detail from subnime:', error);
     return null;
-  } finally {
-    if (browser) await browser.close();
   }
 }
 
@@ -503,8 +368,8 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
   try {
     const url = `${BASE_URL}/${slug}`;
     
-    // Use Puppeteer to get dynamically loaded server buttons
-    const html = await getPageWithPuppeteer(url);
+    // Use Cheerio - server buttons with data-url are in static HTML
+    const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
     // Title
