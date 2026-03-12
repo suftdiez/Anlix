@@ -48,6 +48,11 @@ export const authApi = {
     return res.data;
   },
 
+  googleLogin: async (credential: string) => {
+    const res = await api.post('/auth/google', { credential });
+    return res.data;
+  },
+
   getProfile: async () => {
     const res = await api.get('/auth/me');
     return res.data;

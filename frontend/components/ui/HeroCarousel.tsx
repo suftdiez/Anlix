@@ -52,7 +52,7 @@ export default function HeroCarousel({ items, autoPlayInterval = 5000 }: HeroCar
 
   return (
     <div 
-      className="relative h-[70vh] md:h-[80vh] w-full overflow-hidden"
+      className="relative h-[55vh] md:h-[80vh] w-full overflow-hidden"
       onMouseEnter={() => setIsAutoPlaying(false)}
       onMouseLeave={() => setIsAutoPlaying(true)}
     >
@@ -99,7 +99,7 @@ export default function HeroCarousel({ items, autoPlayInterval = 5000 }: HeroCar
               )}
 
               {/* Title */}
-              <h1 className="text-3xl md:text-5xl lg:text-6xl font-display font-bold text-white text-shadow-lg mb-4 line-clamp-2">
+              <h1 className="text-xl sm:text-3xl md:text-5xl lg:text-6xl font-display font-bold text-white text-shadow-lg mb-4 line-clamp-2">
                 {currentItem.title.length > 50 
                   ? currentItem.title.substring(0, 50) + '...'
                   : currentItem.title}
@@ -148,17 +148,17 @@ export default function HeroCarousel({ items, autoPlayInterval = 5000 }: HeroCar
         <>
           <button
             onClick={goToPrev}
-            className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-dark-card/50 backdrop-blur-sm rounded-full text-white border border-white/10 hover:bg-primary/20 hover:border-primary/50 transition-all z-10"
+            className="absolute left-2 md:left-4 top-1/2 -translate-y-1/2 p-1.5 md:p-3 bg-black/40 md:bg-dark-card/50 backdrop-blur-sm rounded-full text-white/70 md:text-white border border-white/10 hover:bg-primary/20 hover:border-primary/50 transition-all z-10"
             aria-label="Previous"
           >
-            <FiChevronLeft className="w-6 h-6" />
+            <FiChevronLeft className="w-4 h-4 md:w-6 md:h-6" />
           </button>
           <button
             onClick={goToNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-dark-card/50 backdrop-blur-sm rounded-full text-white border border-white/10 hover:bg-primary/20 hover:border-primary/50 transition-all z-10"
+            className="absolute right-2 md:right-4 top-1/2 -translate-y-1/2 p-1.5 md:p-3 bg-black/40 md:bg-dark-card/50 backdrop-blur-sm rounded-full text-white/70 md:text-white border border-white/10 hover:bg-primary/20 hover:border-primary/50 transition-all z-10"
             aria-label="Next"
           >
-            <FiChevronRight className="w-6 h-6" />
+            <FiChevronRight className="w-4 h-4 md:w-6 md:h-6" />
           </button>
         </>
       )}

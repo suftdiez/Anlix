@@ -51,6 +51,7 @@ export default function AnimeDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookmarkId, setBookmarkId] = useState<string | null>(null);
+  const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -228,9 +229,19 @@ export default function AnimeDetailPage() {
             )}
 
             {/* Synopsis */}
-            <p className="text-gray-300 leading-relaxed mb-6">
-              {anime.synopsis || 'Tidak ada sinopsis.'}
-            </p>
+            <div className="mb-6">
+              <p className={`text-gray-300 leading-relaxed ${!isSynopsisExpanded ? 'line-clamp-4 md:line-clamp-none' : ''}`}>
+                {anime.synopsis || 'Tidak ada sinopsis.'}
+              </p>
+              {anime.synopsis && anime.synopsis.length > 150 && (
+                <button
+                  onClick={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
+                  className="text-primary text-sm font-medium mt-2 hover:underline md:hidden"
+                >
+                  {isSynopsisExpanded ? 'Sembunyikan' : 'Baca Selengkapnya...'}
+                </button>
+              )}
+            </div>
 
             {/* Actions */}
             <div className="flex items-center gap-4">

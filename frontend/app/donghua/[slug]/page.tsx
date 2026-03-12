@@ -49,6 +49,7 @@ export default function DonghuaDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [bookmarkId, setBookmarkId] = useState<string | null>(null);
+  const [isSynopsisExpanded, setIsSynopsisExpanded] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -206,7 +207,19 @@ export default function DonghuaDetailPage() {
               </div>
             )}
 
-            <p className="text-gray-300 leading-relaxed mb-6">{donghua.synopsis || 'Tidak ada sinopsis.'}</p>
+            <div className="mb-6">
+              <p className={`text-gray-300 leading-relaxed ${!isSynopsisExpanded ? 'line-clamp-4 md:line-clamp-none' : ''}`}>
+                {donghua.synopsis || 'Tidak ada sinopsis.'}
+              </p>
+              {donghua.synopsis && donghua.synopsis.length > 150 && (
+                <button
+                  onClick={() => setIsSynopsisExpanded(!isSynopsisExpanded)}
+                  className="text-primary text-sm font-medium mt-2 hover:underline md:hidden"
+                >
+                  {isSynopsisExpanded ? 'Sembunyikan' : 'Baca Selengkapnya...'}
+                </button>
+              )}
+            </div>
 
             <div className="flex items-center gap-4">
               {donghua.episodes.length > 0 && (

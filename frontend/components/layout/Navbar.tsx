@@ -246,7 +246,7 @@ export default function Navbar() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Cari anime, donghua, drama, atau film..."
+                  placeholder="Cari anime, drama, film..."
                   className="w-full pl-12 pr-12 py-4 bg-dark-card border border-white/10 rounded-xl text-white text-lg placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
                   autoFocus
                 />

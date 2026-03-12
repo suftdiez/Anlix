@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiEye, FiEyeOff, FiArrowRight } from 'react-icons/fi';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -35,6 +36,25 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    if (!credentialResponse.credential) return;
+    
+    setIsLoading(true);
+    try {
+      await loginWithGoogle(credentialResponse.credential);
+      toast.success('Login dengan Google berhasil!');
+      router.push('/');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Login Google gagal');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleError = () => {
+    toast.error('Login Google dibatalkan atau gagal');
   };
 
   return (
@@ -116,6 +136,31 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-white/10"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-dark-card text-gray-500">ATAU</span>
+            </div>
+          </div>
+
+          {/* Google Login */}
+          <div className="flex justify-center flex-col gap-2">
+            <div className="w-full flex justify-center [&>div]:w-full [&>div>div]:w-full [&>div>div]:flex [&>div>div]:justify-center">
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                useOneTap
+                theme="filled_black"
+                shape="rectangular"
+                text="continue_with"
+                size="large"
+              />
+            </div>
+          </div>
 
           {/* Register Link */}
           <p className="mt-6 text-center text-gray-400">

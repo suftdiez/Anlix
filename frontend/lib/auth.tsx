@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import Cookies from 'js-cookie';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { authApi } from './api';
 
 interface User {
@@ -17,6 +18,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   register: (email: string, password: string, username: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -59,6 +61,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   };
 
+  const loginWithGoogle = async (credential: string) => {
+    const data = await authApi.googleLogin(credential);
+    Cookies.set('token', data.token, { expires: 7 });
+    setToken(data.token);
+    setUser(data.user);
+  };
+
   const register = async (email: string, password: string, username: string) => {
     const data = await authApi.register({ email, password, username });
     Cookies.set('token', data.token, { expires: 7 });
@@ -79,20 +88,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        register,
-        logout,
-        updateUser,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'your_google_client_id_here'}>
+      <AuthContext.Provider
+        value={{
+          user,
+          token,
+          isLoading,
+          isAuthenticated: !!user,
+          login,
+          loginWithGoogle,
+          register,
+          logout,
+          updateUser,
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    </GoogleOAuthProvider>
   );
 }
 

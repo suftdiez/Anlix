@@ -313,12 +313,12 @@ function SearchContent() {
       ) : (
         <>
           {/* Tabs */}
-          <div className="flex gap-3 mb-8 flex-wrap">
+          <div className="flex gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`px-5 py-2.5 rounded-lg font-medium transition-all text-sm ${
+                className={`px-5 py-2.5 rounded-lg font-medium transition-all text-sm flex-shrink-0 whitespace-nowrap ${
                   activeTab === tab.key
                     ? `${tab.color} ${tab.activeTextColor}`
                     : 'bg-dark-card text-gray-400 hover:text-white'

@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
+import { OAuth2Client } from 'google-auth-library';
 import { User } from '../models';
 import { auth, AuthRequest } from '../middleware';
 
 const router = Router();
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /**
  * POST /api/auth/register
@@ -102,6 +104,87 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * POST /api/auth/google
+ * Login or register with Google ID token
+ */
+router.post('/google', async (req: Request, res: Response) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      res.status(400).json({ error: 'Google credential is required' });
+      return;
+    }
+
+    // Verify token with Google
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      res.status(400).json({ error: 'Invalid Google token payload' });
+      return;
+    }
+
+    const { email, name, picture, sub: googleId } = payload;
+
+    // Check if user exists by googleId OR email
+    let user = await User.findOne({ 
+      $or: [{ googleId }, { email }] 
+    });
+
+    if (user) {
+      // User exists. Update googleId and authProvider if they were a local user initially
+      if (user.authProvider === 'local') {
+        user.googleId = googleId;
+        user.authProvider = 'google';
+        if (!user.avatar && picture) user.avatar = picture;
+        await user.save();
+      }
+    } else {
+      // User doesn't exist, create a new one
+      // Generate a unique username based on name
+      const baseUsername = name?.toLowerCase().replace(/[^a-z0-9]/g, '') || email.split('@')[0];
+      let username = baseUsername;
+      let counter = 1;
+      
+      while (await User.findOne({ username })) {
+        username = `${baseUsername}${counter}`;
+        counter++;
+      }
+
+      user = new User({
+        email,
+        username,
+        avatar: picture || '',
+        googleId,
+        authProvider: 'google',
+      });
+      await user.save();
+    }
+
+    // Generate token
+    const token = user.generateToken();
+
+    res.json({
+      message: 'Google login successful',
+      user: {
+        id: user._id,
+        email: user.email,
+        username: user.username,
+        avatar: user.avatar,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({ error: 'Failed to authenticate with Google' });
   }
 });
 
