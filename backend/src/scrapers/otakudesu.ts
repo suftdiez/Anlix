@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import puppeteer from 'puppeteer';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://otakudesu.best';
+const BASE_URL = 'https://otakudesu.blog';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
 // In-memory cache as fallback when Redis is not available

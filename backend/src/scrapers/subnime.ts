@@ -298,33 +298,82 @@ export async function getAnimeDetail(slug: string): Promise<AnimeDetail | null> 
       }
     });
 
-    // ===== EPISODES: Parse from static HTML =====
+    // ===== EPISODES: Extract from inline JavaScript =====
+    // Subnime embeds all episodes as JSON in a script tag: const allEpisodes = [{...}, ...]
     const episodes: Episode[] = [];
     const seenEps = new Set<string>();
 
-    // Episode links are in static HTML as a.episode-grid-item or .episode-list-item
-    $('a.episode-grid-item, a.episode-list-item, a[href*="episode-"]').each((_, el) => {
-      const $el = $(el);
-      const href = $el.attr('href') || '';
-      const text = $el.text().trim();
-      
-      if (!href || !href.includes('episode')) return;
-      
-      const epNumMatch = text.match(/(\d+)/) || href.match(/episode-(\d+)/);
-      const epNum = epNumMatch ? epNumMatch[1] : '';
-      const epSlug = href.split('/').filter(Boolean).pop() || '';
-      
-      if (seenEps.has(epNum) || !epSlug || !epNum) return;
-      seenEps.add(epNum);
-      
-      episodes.push({
-        id: epSlug,
-        number: epNum,
-        title: `Episode ${epNum}`,
-        slug: epSlug,
-        url: href.startsWith('http') ? href : `${BASE_URL}/${epSlug}`,
+    // Method 1: Extract allEpisodes JSON array from inline script
+    const allEpisodesMatch = html.match(/const\s+allEpisodes\s*=\s*(\[[\s\S]*?\]);/);
+    if (allEpisodesMatch) {
+      try {
+        const episodeData = JSON.parse(allEpisodesMatch[1]);
+        if (Array.isArray(episodeData)) {
+          for (const ep of episodeData) {
+            const epNum = String(ep.episode_number || '');
+            if (!epNum || seenEps.has(epNum)) continue;
+            seenEps.add(epNum);
+
+            const epSlug = `${slug}-episode-${epNum}`;
+            const epTitle = ep.title ? `Episode ${epNum}: ${ep.title}` : `Episode ${epNum}`;
+
+            episodes.push({
+              id: String(ep.id || epSlug),
+              number: epNum,
+              title: epTitle,
+              slug: epSlug,
+              url: `${BASE_URL}/${epSlug}`,
+            });
+          }
+        }
+      } catch (e) {
+        // JSON parse failed, fall through to fallback
+      }
+    }
+
+    // Method 2: Fallback - try DOM links (in case site structure changes)
+    if (episodes.length === 0) {
+      $('a.episode-grid-item, a.episode-list-item, a[href*="episode-"]').each((_, el) => {
+        const $el = $(el);
+        const href = $el.attr('href') || '';
+        const text = $el.text().trim();
+        
+        if (!href || !href.includes('episode')) return;
+        
+        const epNumMatch = text.match(/(\d+)/) || href.match(/episode-(\d+)/);
+        const epNum = epNumMatch ? epNumMatch[1] : '';
+        const epSlug = href.split('/').filter(Boolean).pop() || '';
+        
+        if (seenEps.has(epNum) || !epSlug || !epNum) return;
+        seenEps.add(epNum);
+        
+        episodes.push({
+          id: epSlug,
+          number: epNum,
+          title: `Episode ${epNum}`,
+          slug: epSlug,
+          url: href.startsWith('http') ? href : `${BASE_URL}/${epSlug}`,
+        });
       });
-    });
+    }
+
+    // Method 3: Fallback - generate from total episode count + slug pattern
+    if (episodes.length === 0) {
+      const totalEpStr = info['episode'] || info['episodes'] || '';
+      const totalEp = parseInt(totalEpStr) || 0;
+      if (totalEp > 0) {
+        for (let i = 1; i <= totalEp; i++) {
+          const epSlug = `${slug}-episode-${i}`;
+          episodes.push({
+            id: epSlug,
+            number: String(i),
+            title: `Episode ${i}`,
+            slug: epSlug,
+            url: `${BASE_URL}/${epSlug}`,
+          });
+        }
+      }
+    }
 
     // Sort episodes by number
     episodes.sort((a, b) => parseInt(a.number) - parseInt(b.number));
