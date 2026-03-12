@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiSearch, FiMenu, FiX, FiUser, FiLogOut, FiBookmark, FiClock } from 'react-icons/fi';
 import { useAuth } from '@/lib/auth';
@@ -14,6 +14,16 @@ export default function Navbar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const { user, isAuthenticated, logout } = useAuth();
   const router = useRouter();
+
+  // Prevent body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isMenuOpen]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,139 +47,144 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-dark-600/80 backdrop-blur-lg border-b border-white/5">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16 md:h-20">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl md:text-3xl font-display font-bold gradient-text">
-              ANLIX
-            </span>
-          </Link>
+    <>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-dark-600/80 backdrop-blur-lg border-b border-white/5">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center justify-between h-16 md:h-20">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-2">
+              <span className="text-2xl md:text-3xl font-display font-bold gradient-text">
+                ANLIX
+              </span>
+            </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-8">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="nav-link font-medium"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-
-          {/* Right Section */}
-          <div className="flex items-center gap-3">
-            {/* Search Button */}
-            <button
-              onClick={() => setIsSearchOpen(true)}
-              className="p-2 text-gray-400 hover:text-white transition-colors"
-              aria-label="Search"
-            >
-              <FiSearch className="w-5 h-5" />
-            </button>
-
-            {/* User Menu */}
-            {isAuthenticated ? (
-              <div className="relative">
-                <button
-                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors"
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-8">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="nav-link font-medium"
                 >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-semibold text-sm">
-                    {user?.username?.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="hidden sm:block text-sm font-medium">
-                    {user?.username}
-                  </span>
-                </button>
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
 
-                <AnimatePresence>
-                  {isUserMenuOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: 10 }}
-                      className="absolute right-0 top-full mt-2 w-48 bg-dark-card border border-white/10 rounded-xl shadow-xl overflow-hidden"
-                    >
-                      <Link
-                        href="/profile"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
-                      >
-                        <FiUser className="w-4 h-4" />
-                        <span>Profil</span>
-                      </Link>
-                      <Link
-                        href="/profile/bookmarks"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
-                      >
-                        <FiBookmark className="w-4 h-4" />
-                        <span>Bookmark</span>
-                      </Link>
-                      <Link
-                        href="/profile/history"
-                        onClick={() => setIsUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
-                      >
-                        <FiClock className="w-4 h-4" />
-                        <span>Riwayat</span>
-                      </Link>
-                      <button
-                        onClick={() => {
-                          logout();
-                          setIsUserMenuOpen(false);
-                        }}
-                        className="flex items-center gap-3 w-full px-4 py-3 text-red-400 hover:bg-red-500/10 transition-colors border-t border-white/5"
-                      >
-                        <FiLogOut className="w-4 h-4" />
-                        <span>Keluar</span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <Link
-                href="/auth/login"
-                className="hidden sm:flex btn-primary text-sm py-2"
+            {/* Right Section */}
+            <div className="flex items-center gap-3">
+              {/* Search Button */}
+              <button
+                onClick={() => setIsSearchOpen(true)}
+                className="p-2 text-gray-400 hover:text-white transition-colors"
+                aria-label="Search"
               >
-                Masuk
-              </Link>
-            )}
+                <FiSearch className="w-5 h-5" />
+              </button>
 
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setIsMenuOpen(true)}
-              className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
-              aria-label="Menu"
-            >
-              <FiMenu className="w-6 h-6" />
-            </button>
+              {/* User Menu */}
+              {isAuthenticated ? (
+                <div className="relative">
+                  <button
+                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-semibold text-sm">
+                      {user?.username?.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="hidden sm:block text-sm font-medium">
+                      {user?.username}
+                    </span>
+                  </button>
+
+                  <AnimatePresence>
+                    {isUserMenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute right-0 top-full mt-2 w-48 bg-dark-card border border-white/10 rounded-xl shadow-xl overflow-hidden"
+                      >
+                        <Link
+                          href="/profile"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <FiUser className="w-4 h-4" />
+                          <span>Profil</span>
+                        </Link>
+                        <Link
+                          href="/profile/bookmarks"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <FiBookmark className="w-4 h-4" />
+                          <span>Bookmark</span>
+                        </Link>
+                        <Link
+                          href="/profile/history"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-gray-300 hover:bg-white/5 hover:text-white transition-colors"
+                        >
+                          <FiClock className="w-4 h-4" />
+                          <span>Riwayat</span>
+                        </Link>
+                        <button
+                          onClick={() => {
+                            logout();
+                            setIsUserMenuOpen(false);
+                          }}
+                          className="flex items-center gap-3 w-full px-4 py-3 text-red-400 hover:bg-red-500/10 transition-colors border-t border-white/5"
+                        >
+                          <FiLogOut className="w-4 h-4" />
+                          <span>Keluar</span>
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ) : (
+                <Link
+                  href="/auth/login"
+                  className="hidden sm:flex btn-primary text-sm py-2"
+                >
+                  Masuk
+                </Link>
+              )}
+
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setIsMenuOpen(true)}
+                className="md:hidden p-2 text-gray-400 hover:text-white transition-colors"
+                aria-label="Menu"
+              >
+                <FiMenu className="w-6 h-6" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu - Rendered OUTSIDE header for proper z-index stacking */}
       <AnimatePresence>
         {isMenuOpen && (
           <>
+            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] md:hidden"
               onClick={() => setIsMenuOpen(false)}
             />
+            {/* Slide-in Panel */}
             <motion.div
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed top-0 right-0 bottom-0 w-72 bg-dark-card border-l border-white/10 z-50 md:hidden"
+              className="fixed top-0 right-0 bottom-0 w-72 z-[101] md:hidden"
+              style={{ backgroundColor: '#0a0a0a' }}
             >
               <div className="p-4 flex justify-between items-center border-b border-white/10">
                 <span className="text-xl font-display font-bold gradient-text">
@@ -182,7 +197,7 @@ export default function Navbar() {
                   <FiX className="w-6 h-6" />
                 </button>
               </div>
-              <nav className="p-4 space-y-2">
+              <nav className="p-4 space-y-1 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 70px)' }}>
                 {navLinks.map((link) => (
                   <Link
                     key={link.href}
@@ -208,7 +223,7 @@ export default function Navbar() {
         )}
       </AnimatePresence>
 
-      {/* Search Modal */}
+      {/* Search Modal - Rendered OUTSIDE header for proper z-index */}
       <AnimatePresence>
         {isSearchOpen && (
           <>
@@ -216,14 +231,14 @@ export default function Navbar() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50"
+              className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100]"
               onClick={() => setIsSearchOpen(false)}
             />
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="fixed top-20 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-50"
+              className="fixed top-20 inset-x-0 mx-auto w-full max-w-2xl px-4 z-[101]"
             >
               <form onSubmit={handleSearch} className="relative">
                 <FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -232,7 +247,7 @@ export default function Navbar() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Cari anime, donghua, drama, atau film..."
-                  className="w-full pl-12 pr-4 py-4 bg-dark-card border border-white/10 rounded-xl text-white text-lg placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
+                  className="w-full pl-12 pr-12 py-4 bg-dark-card border border-white/10 rounded-xl text-white text-lg placeholder:text-gray-500 focus:outline-none focus:border-primary/50"
                   autoFocus
                 />
                 <button
@@ -247,6 +262,6 @@ export default function Navbar() {
           </>
         )}
       </AnimatePresence>
-    </header>
+    </>
   );
 }
