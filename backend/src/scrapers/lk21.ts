@@ -4,7 +4,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://tv8.lk21official.cc';
+const BASE_URL = 'https://tv9.lk21official.cc';
 const SERIES_URL = 'https://tv3.nontondrama.my';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
@@ -59,6 +59,7 @@ export interface FilmItem {
   genres?: string[];
   country?: string;
   url: string;
+  source?: 'lk21' | 'tmdb';
 }
 
 export interface FilmDetail extends FilmItem {
@@ -448,21 +449,19 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
     const seen = new Set<string>();
     
     // Build search queries: original + progressively drop last word for typo tolerance
-    // e.g., "better call soul" → ["better call soul", "better call"]
     const queryVariants = [query];
     const words = query.trim().split(/\s+/);
     if (words.length >= 2) {
-      // Add variant without last word (handles common typos in last word)
       queryVariants.push(words.slice(0, -1).join(' '));
     }
     
-    // Try each query variant with both languages
+    // Try each query variant - search en-US first to get Latin titles
     let movieResults: any[] = [];
     let tvResults: any[] = [];
     
     searchLoop:
     for (const searchQuery of queryVariants) {
-      for (const lang of ['id-ID', 'en-US']) {
+      for (const lang of ['en-US', 'id-ID']) {
         const [movieRes, tvRes] = await Promise.all([
           axios.get('https://api.themoviedb.org/3/search/movie', {
             params: { api_key: tmdbApiKey, language: lang, query: searchQuery, page },
@@ -483,11 +482,24 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
       }
     }
     
+    // Helper to pick best Latin/English title
+    const pickLatinTitle = (primary: string, original: string): string => {
+      // Check if primary title is mostly Latin characters
+      const latinRatio = (primary.match(/[a-zA-Z0-9\s\-:,.!?'"()]/g) || []).length / Math.max(primary.length, 1);
+      if (latinRatio > 0.5) return primary;
+      // If original_title is more Latin, use it
+      const origLatinRatio = (original.match(/[a-zA-Z0-9\s\-:,.!?'"()]/g) || []).length / Math.max(original.length, 1);
+      if (origLatinRatio > 0.5) return original;
+      // Fallback: return original (which is usually in the film's native language/Latin)
+      return original || primary;
+    };
+
     const tmdbFilms: FilmItem[] = [];
     
     for (const movie of movieResults) {
       const year = movie.release_date ? movie.release_date.split('-')[0] : '';
-      const title = movie.title || movie.original_title || '';
+      const title = pickLatinTitle(movie.title || '', movie.original_title || '');
+      if (!title) continue;
       const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
       
       if (!seen.has(slug) && title) {
@@ -499,13 +511,15 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
           poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : '',
           year,
           url: `https://www.themoviedb.org/movie/${movie.id}`,
+          source: 'tmdb',
         });
       }
     }
     
     for (const show of tvResults) {
       const year = show.first_air_date ? show.first_air_date.split('-')[0] : '';
-      const title = show.name || show.original_name || '';
+      const title = pickLatinTitle(show.name || '', show.original_name || '');
+      if (!title) continue;
       const slug = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') + (year ? `-${year}` : '');
       
       if (!seen.has(slug) && title) {
@@ -517,6 +531,7 @@ export async function searchFilms(query: string, page: number = 1): Promise<{ da
           poster: show.poster_path ? `https://image.tmdb.org/t/p/w500${show.poster_path}` : '',
           year,
           url: `https://www.themoviedb.org/tv/${show.id}`,
+          source: 'tmdb',
         });
       }
     }

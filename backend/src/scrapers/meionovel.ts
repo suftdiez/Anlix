@@ -100,6 +100,40 @@ async function setCache(key: string, data: unknown): Promise<void> {
 }
 
 /**
+ * Get highest resolution poster URL from a Cheerio element.
+ * WordPress sites serve tiny thumbnails in src (e.g. img-110x150.jpg)
+ * but have larger versions in srcset or as the original file.
+ */
+function getHighResPoster($el: cheerio.Cheerio<any>): string {
+  const imgEl = $el.find('img');
+  
+  // Try srcset first — pick the largest image
+  const srcset = imgEl.attr('srcset') || '';
+  if (srcset) {
+    const entries = srcset.split(',').map(s => {
+      const parts = s.trim().split(/\s+/);
+      const url = parts[0];
+      const width = parseInt(parts[1]?.replace('w', '') || '0');
+      return { url, width };
+    }).filter(e => e.url && e.width > 0);
+    
+    if (entries.length > 0) {
+      entries.sort((a, b) => b.width - a.width);
+      return entries[0].url;
+    }
+  }
+  
+  // Fallback: get src and strip WordPress thumbnail suffix (-WxH)
+  let src = imgEl.attr('src') || imgEl.attr('data-src') || '';
+  if (src) {
+    // Remove WordPress size suffix: image-110x150.jpg → image.jpg
+    src = src.replace(/-\d+x\d+(?=\.[a-zA-Z]+$)/, '');
+  }
+  
+  return src;
+}
+
+/**
  * Get latest novels
  */
 export async function getLatest(page: number = 1): Promise<{ data: NovelItem[]; hasNext: boolean }> {
@@ -126,8 +160,7 @@ export async function getLatest(page: number = 1): Promise<{ data: NovelItem[]; 
       const title = $el.find('.post-title h3 a, .post-title a, h3 a').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
       
       const latestChapter = $el.find('.chapter-item .chapter a, .list-chapter a').first().text().trim();
       const type = $el.find('.manga-title-badges').text().trim() || ''; // HTL or MTL
@@ -187,8 +220,7 @@ export async function getPopular(page: number = 1): Promise<{ data: NovelItem[];
       const title = $el.find('.post-title h3 a, .post-title a, h3 a').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
       
       const latestChapter = $el.find('.chapter-item .chapter a, .list-chapter a').first().text().trim();
 
@@ -257,8 +289,7 @@ export async function getByCategory(category: string, page: number = 1): Promise
       const title = $el.find('.post-title h3 a, .post-title a, h3 a, .tt').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
       
       const latestChapter = $el.find('.chapter-item .chapter a, .list-chapter a').first().text().trim();
 
@@ -317,8 +348,7 @@ export async function getByGenre(genre: string, page: number = 1): Promise<{ dat
       const title = $el.find('.post-title h3 a, .post-title a').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
 
       if (href && title) {
         const match = href.match(/\/novel\/([^/]+)/);
@@ -381,8 +411,7 @@ export async function getByAuthor(author: string, page: number = 1): Promise<{ d
       const title = $el.find('.post-title h3 a, .post-title a').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
 
       const latestChapter = $el.find('.chapter a, .list-chapter a').first().text().trim();
 
@@ -954,7 +983,7 @@ export async function search(query: string, page: number = 1): Promise<{ data: N
           
           // Find nearby image
           const parent = $el.closest('.c-tabs-item__content, .item, article, .manga, div');
-          const poster = parent.find('img').attr('src') || parent.find('img').attr('data-src') || '';
+          const poster = getHighResPoster(parent);
           
           novels.push({
             id: slug,
@@ -1095,8 +1124,7 @@ export async function getByTag(tag: string, page: number = 1): Promise<{ data: N
       const title = $el.find('.post-title h3 a, .post-title a').first().text().trim() ||
                     linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = getHighResPoster($el);
 
       const latestChapter = $el.find('.chapter a, .list-chapter a').first().text().trim();
 

@@ -8,6 +8,16 @@ const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 // In-memory cache as fallback when Redis is not available
 const memoryCache = new Map<string, { data: string; expiry: number }>();
 
+/**
+ * Upscale WordPress proxy image URLs (i*.wp.com) by adjusting the resize parameter.
+ * Samehadaku serves 247x350 thumbnails via wp.com proxy. We can request larger sizes.
+ */
+function upscaleWpImage(url: string): string {
+  if (!url) return '';
+  // Replace ?resize=247,350 (or any small size) with larger dimensions
+  return url.replace(/\?resize=\d+,\d+/, '?resize=500,700');
+}
+
 // Rate limit tracking
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 1000; // Minimum 1 second between requests
@@ -193,10 +203,11 @@ export async function getLatestAnime(page: number = 1): Promise<{ data: AnimeIte
                   linkEl.attr('title') || '';
       
       // Get poster - v1.samehadaku.how uses .thumbass img
-      const poster = $el.find('.thumbass img, .imgseries img').attr('src') || 
+      const rawPoster = $el.find('.thumbass img, .imgseries img').attr('src') || 
                      $el.find('img').attr('src') || 
                      $el.find('img').attr('data-src') ||
                      $el.find('img').attr('data-lazy-src') || '';
+      const poster = upscaleWpImage(rawPoster);
       
       const episode = $el.find('.epx').text().trim() ||
                       $el.find('.sb').text().trim() ||
@@ -640,8 +651,9 @@ export async function getAnimeByGenre(genre: string, page: number = 1): Promise<
                   $el.find('.title').text().trim() ||
                   linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
+      const rawPoster = $el.find('img').attr('src') || 
                      $el.find('img').attr('data-src') || '';
+      const poster = upscaleWpImage(rawPoster);
 
       if (href && title) {
         let slug = '';
