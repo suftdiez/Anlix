@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { FiMail, FiLock, FiUser, FiEye, FiEyeOff, FiArrowRight } from 'react-icons/fi';
-import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
+import { FcGoogle } from 'react-icons/fc';
 import { useAuth } from '@/lib/auth';
 import toast from 'react-hot-toast';
 
@@ -50,12 +50,10 @@ export default function RegisterPage() {
     }
   };
 
-  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    if (!credentialResponse.credential) return;
-    
+  const handleGoogleRegister = async () => {
     setIsLoading(true);
     try {
-      await loginWithGoogle(credentialResponse.credential);
+      await loginWithGoogle();
       toast.success('Registrasi dengan Google berhasil!');
       router.push('/');
     } catch (error: any) {
@@ -63,10 +61,6 @@ export default function RegisterPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleGoogleError = () => {
-    toast.error('Registrasi Google dibatalkan atau gagal');
   };
 
   return (
@@ -199,19 +193,15 @@ export default function RegisterPage() {
           </div>
 
           {/* Google Login */}
-          <div className="flex justify-center flex-col gap-2">
-            <div className="w-full flex justify-center [&>div]:w-full [&>div>div]:w-full [&>div>div]:flex [&>div>div]:justify-center">
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={handleGoogleError}
-                useOneTap
-                theme="filled_black"
-                shape="rectangular"
-                text="signup_with"
-                size="large"
-              />
-            </div>
-          </div>
+          <button
+            type="button"
+            onClick={handleGoogleRegister}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all duration-200 text-white font-medium"
+          >
+            <FcGoogle className="w-5 h-5" />
+            <span>Daftar dengan Google</span>
+          </button>
 
           {/* Login Link */}
           <p className="mt-6 text-center text-gray-400">

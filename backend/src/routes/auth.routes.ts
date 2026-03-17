@@ -1,10 +1,9 @@
 import { Router, Request, Response } from 'express';
-import { OAuth2Client } from 'google-auth-library';
 import { User } from '../models';
 import { auth, AuthRequest } from '../middleware';
+import { firebaseAuth } from '../config/firebaseAdmin';
 
 const router = Router();
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /**
  * POST /api/auth/register
@@ -116,23 +115,18 @@ router.post('/google', async (req: Request, res: Response) => {
     const { credential } = req.body;
 
     if (!credential) {
-      res.status(400).json({ error: 'Google credential is required' });
+      res.status(400).json({ error: 'Firebase credential is required' });
       return;
     }
 
-    // Verify token with Google
-    const ticket = await googleClient.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    // Verify Firebase ID token
+    const decodedToken = await firebaseAuth.verifyIdToken(credential);
+    const { email, name, picture, uid: googleId } = decodedToken;
 
-    const payload = ticket.getPayload();
-    if (!payload?.email) {
-      res.status(400).json({ error: 'Invalid Google token payload' });
+    if (!email) {
+      res.status(400).json({ error: 'Invalid Firebase token: no email found' });
       return;
     }
-
-    const { email, name, picture, sub: googleId } = payload;
 
     // Check if user exists by googleId OR email
     let user = await User.findOne({ 

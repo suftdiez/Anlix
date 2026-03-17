@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import Cookies from 'js-cookie';
-import { GoogleOAuthProvider } from '@react-oauth/google';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { auth as firebaseAuth } from './firebase';
 import { authApi } from './api';
 
 interface User {
@@ -18,7 +19,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: (credential: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   register: (email: string, password: string, username: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => void;
@@ -61,8 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   };
 
-  const loginWithGoogle = async (credential: string) => {
-    const data = await authApi.googleLogin(credential);
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(firebaseAuth, provider);
+    const idToken = await result.user.getIdToken();
+    const data = await authApi.googleLogin(idToken);
     Cookies.set('token', data.token, { expires: 7 });
     setToken(data.token);
     setUser(data.user);
@@ -88,23 +92,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || 'your_google_client_id_here'}>
-      <AuthContext.Provider
-        value={{
-          user,
-          token,
-          isLoading,
-          isAuthenticated: !!user,
-          login,
-          loginWithGoogle,
-          register,
-          logout,
-          updateUser,
-        }}
-      >
-        {children}
-      </AuthContext.Provider>
-    </GoogleOAuthProvider>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        loginWithGoogle,
+        register,
+        logout,
+        updateUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   );
 }
 
