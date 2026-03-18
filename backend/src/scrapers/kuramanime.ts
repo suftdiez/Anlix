@@ -369,27 +369,43 @@ export async function getAnimeDetail(id: string): Promise<AnimeDetail | null> {
         if (text) genres.push(text);
       });
       
-      // Episodes - extract from episode-specific links with URL pattern /episode/N
+      // Episodes - extract max episode number and generate the list to bypass pagination
       const episodes: Array<{number: string; title: string; href: string}> = [];
       const seenNumbers = new Set<string>();
+      
+      let maxEp = 0;
+      let baseUrl = window.location.href.split('?')[0].replace(/\/$/, '');
       
       document.querySelectorAll('a[href*="/episode/"]').forEach((a: Element) => {
         const href = (a as HTMLAnchorElement).href || '';
         // Extract episode number from URL path like /episode/1 or /episode/12
         const epUrlMatch = href.match(/\/episode\/(\d+)/);
         if (epUrlMatch && epUrlMatch[1]) {
-          const epNum = epUrlMatch[1];
-          // Avoid duplicates
-          if (!seenNumbers.has(epNum)) {
-            seenNumbers.add(epNum);
+          const epNum = parseInt(epUrlMatch[1]);
+          if (epNum > maxEp) maxEp = epNum;
+          
+          if (!seenNumbers.has(epUrlMatch[1])) {
+            seenNumbers.add(epUrlMatch[1]);
             episodes.push({
-              number: epNum,
-              title: `Episode ${epNum}`,
+              number: epUrlMatch[1],
+              title: `Episode ${epUrlMatch[1]}`,
               href: href,
             });
           }
         }
       });
+      
+      // Auto-generate missing episodes if we're paginated
+      if (maxEp > episodes.length) {
+        episodes.length = 0; // Clear visible ones to ensure correct ordering
+        for (let i = 1; i <= maxEp; i++) {
+          episodes.push({
+            number: i.toString(),
+            title: `Episode ${i}`,
+            href: `${baseUrl}/episode/${i}`,
+          });
+        }
+      }
       
       return { title, poster, synopsis, infoItems, genres, episodes };
     });
