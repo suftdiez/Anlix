@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { FiGithub, FiHeart } from 'react-icons/fi';
+import Image from 'next/image';
 
 export default function Footer() {
   const currentYear = new Date().getFullYear();
@@ -33,9 +34,13 @@ export default function Footer() {
           {/* Brand */}
           <div className="md:col-span-2">
             <Link href="/" className="inline-block">
-              <span className="text-3xl font-display font-bold gradient-text">
-                ANLIX
-              </span>
+              <Image 
+                src="/logo.png" 
+                alt="ANLIX Logo" 
+                width={140} 
+                height={48} 
+                className="h-10 md:h-12 w-auto object-contain" 
+              />
             </Link>
             <p className="mt-4 text-gray-400 max-w-md">
               Tempat terbaik untuk menonton anime dan donghua subtitle Indonesia. 

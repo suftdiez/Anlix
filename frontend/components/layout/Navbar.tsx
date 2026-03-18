@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiSearch, FiMenu, FiX, FiUser, FiLogOut, FiBookmark, FiClock } from 'react-icons/fi';
@@ -53,9 +54,14 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16 md:h-20">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <span className="text-2xl md:text-3xl font-display font-bold gradient-text">
-                ANLIX
-              </span>
+              <Image 
+                src="/logo.png" 
+                alt="ANLIX Logo" 
+                width={120} 
+                height={40} 
+                className="h-8 md:h-10 w-auto object-contain" 
+                priority
+              />
             </Link>
 
             {/* Desktop Navigation */}
