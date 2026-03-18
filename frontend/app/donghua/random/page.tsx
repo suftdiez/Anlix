@@ -105,7 +105,7 @@ export default function DonghuaRandomPage() {
         <button
           onClick={handleSurpriseMe}
           disabled={isLoading || donghuas.length === 0}
-          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl text-white font-semibold hover:opacity-90 transition-all disabled:opacity-50"
+          className="flex items-center gap-2 px-6 py-3 bg-purple-500 rounded-xl text-white font-semibold hover:bg-purple-600 transition-all disabled:opacity-50"
         >
           <FiShuffle className="w-5 h-5" />
           Surprise Me!

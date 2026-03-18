@@ -46,7 +46,7 @@ export default function FilmCountryIndexPage() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-display font-bold text-white">
-              Film <span className="gradient-text">Berdasarkan Negara</span>
+              Film <span className="text-white">Berdasarkan Negara</span>
             </h1>
             <p className="text-gray-400">
               Pilih negara untuk melihat koleksi film

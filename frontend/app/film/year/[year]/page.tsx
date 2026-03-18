@@ -71,7 +71,7 @@ export default function FilmYearPage() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-display font-bold text-white">
-              Film Tahun <span className="gradient-text">{year}</span>
+              Film Tahun <span className="text-white">{year}</span>
             </h1>
             <p className="text-gray-400">
               Koleksi film rilis tahun {year} subtitle Indonesia

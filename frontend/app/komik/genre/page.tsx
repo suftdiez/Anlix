@@ -44,7 +44,7 @@ export default function KomikGenreListPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Genre <span className="gradient-text">Komik</span>
+          Genre <span className="text-white">Komik</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Jelajahi komik berdasarkan genre favorit kamu

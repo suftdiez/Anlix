@@ -50,8 +50,8 @@ export default function ProfilePage() {
   return (
     <div className="min-h-[calc(100vh-5rem)] bg-dark-bg text-white pb-20">
       {/* Header Banner Background */}
-      <div className="h-48 md:h-64 bg-gradient-to-br from-primary/40 via-dark-card to-dark-bg relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+      <div className="h-48 md:h-64 bg-dark-800 relative overflow-hidden">
+        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
       </div>
 
       <div className="container mx-auto px-4 sm:px-6 relative -mt-24 md:-mt-32">
@@ -74,7 +74,7 @@ export default function ProfilePage() {
                     className="object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-primary text-3xl md:text-5xl font-bold font-outfit uppercase">
+                  <div className="w-full h-full flex items-center justify-center bg-blue-500 text-3xl md:text-5xl font-bold font-outfit uppercase">
                     {user.username.charAt(0)}
                   </div>
                 )}
@@ -87,7 +87,7 @@ export default function ProfilePage() {
                 {user.username}
               </h1>
               <p className="text-gray-400 text-sm md:text-base mb-4">{user.email}</p>
-              <div className="inline-flex items-center px-3 py-1 bg-primary/20 text-primary border border-primary/20 rounded-full text-xs font-medium">
+              <div className="inline-flex items-center px-3 py-1 bg-blue-500/20 text-blue-400 border border-blue-500/20 rounded-full text-xs font-medium">
                 Member ANLIX
               </div>
             </div>

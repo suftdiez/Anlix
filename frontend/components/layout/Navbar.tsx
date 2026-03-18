@@ -57,9 +57,9 @@ export default function Navbar() {
               <Image 
                 src="/logo.png" 
                 alt="ANLIX Logo" 
-                width={120} 
-                height={40} 
-                className="h-8 md:h-10 w-auto object-contain" 
+                width={300} 
+                height={96} 
+                className="h-16 md:h-24 w-auto object-contain" 
                 priority
               />
             </Link>

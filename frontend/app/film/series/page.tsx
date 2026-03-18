@@ -68,7 +68,7 @@ export default function SeriesListPage() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-display font-bold text-white">
-              Series <span className="gradient-text">Unggulan</span>
+              Series <span className="text-white">Unggulan</span>
             </h1>
             <p className="text-gray-400 mt-1">
               Koleksi series terbaik dengan subtitle Indonesia

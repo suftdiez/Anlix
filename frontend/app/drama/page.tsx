@@ -358,7 +358,6 @@ export default function DramaPage() {
         animate={{ opacity: 1, y: 0 }}
         className="flex items-center gap-3 mb-6"
       >
-        <FiFilm className="w-6 h-6 text-pink-400" />
         <h1 className="text-2xl md:text-3xl font-display font-bold text-white">
           Drama Pendek
         </h1>
@@ -370,7 +369,7 @@ export default function DramaPage() {
           onClick={() => setActiveTab('all')}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
             activeTab === 'all'
-              ? 'bg-gradient-to-r from-pink-500 to-purple-500 text-white'
+              ? 'bg-pink-500 text-white'
               : 'bg-dark-card text-gray-400 hover:text-white'
           }`}
         >
@@ -518,7 +517,7 @@ export default function DramaPage() {
               <button
                 onClick={loadMore}
                 disabled={isLoadingMore}
-                className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-8 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoadingMore ? (
                   <>

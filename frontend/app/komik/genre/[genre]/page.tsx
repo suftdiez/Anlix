@@ -54,7 +54,7 @@ export default function KomikGenreDetailPage() {
           </div>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-white">
-              Genre: <span className="gradient-text">{genreName}</span>
+              Genre: <span className="text-white">{genreName}</span>
             </h1>
             <p className="text-gray-400">
               Koleksi komik dengan genre {genreName}

@@ -129,7 +129,7 @@ export default function FilmPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
-          Daftar <span className="gradient-text">Film</span>
+          Daftar <span className="text-white">Film</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Koleksi film subtitle Indonesia terbaru dengan kualitas HD

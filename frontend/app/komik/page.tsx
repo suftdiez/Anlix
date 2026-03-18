@@ -105,7 +105,7 @@ export default function KomikPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Daftar <span className="gradient-text">Komik</span>
+          Daftar <span className="text-white">Komik</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Koleksi manga, manhwa, dan manhua terbaru dengan terjemahan Indonesia
@@ -126,7 +126,7 @@ export default function KomikPage() {
           <button
             onClick={handleRandomKomik}
             disabled={isRandomLoading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded-lg transition-all disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition-all disabled:opacity-50"
           >
             <FiShuffle className={`w-4 h-4 ${isRandomLoading ? 'animate-spin' : ''}`} />
             {isRandomLoading ? 'Loading...' : 'Random Komik'}

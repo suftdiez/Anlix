@@ -97,7 +97,7 @@ export default function FilmCountryPage() {
           </div>
           <div>
             <h1 className="text-3xl md:text-4xl font-display font-bold text-white">
-              Film <span className="gradient-text">{countryInfo.name}</span>
+              Film <span className="text-white">{countryInfo.name}</span>
             </h1>
             <p className="text-gray-400">
               Koleksi film dari {countryInfo.name} subtitle Indonesia

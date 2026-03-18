@@ -59,18 +59,13 @@ export default function FeaturedSeries() {
     <section className="mb-10">
       {/* Section Header */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-lg">
-            <FiTv className="w-5 h-5 text-purple-400" />
-          </div>
-          <div>
-            <h2 className="text-xl md:text-2xl font-display font-bold text-white">
-              Series Unggulan
-            </h2>
-            <p className="text-sm text-gray-400">
-              Koleksi series terbaik untuk ditonton
-            </p>
-          </div>
+        <div>
+          <h2 className="text-xl md:text-2xl font-display font-bold text-white">
+            Series Unggulan
+          </h2>
+          <p className="text-sm text-gray-400">
+            Koleksi series terbaik untuk ditonton
+          </p>
         </div>
         
         <div className="flex items-center gap-2">

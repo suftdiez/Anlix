@@ -148,7 +148,7 @@ export default function AnimePage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl md:text-4xl font-display font-bold text-white mb-2">
-          Daftar <span className="gradient-text">Anime</span>
+          Daftar <span className="text-white">Anime</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Koleksi anime subtitle Indonesia terlengkap dengan update terbaru

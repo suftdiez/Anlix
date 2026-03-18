@@ -37,9 +37,9 @@ export default function Footer() {
               <Image 
                 src="/logo.png" 
                 alt="ANLIX Logo" 
-                width={140} 
-                height={48} 
-                className="h-10 md:h-12 w-auto object-contain" 
+                width={300} 
+                height={100} 
+                className="h-20 md:h-28 w-auto object-contain" 
               />
             </Link>
             <p className="mt-4 text-gray-400 max-w-md">

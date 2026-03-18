@@ -18,6 +18,7 @@ interface AnimeItem {
   rating?: string;
   latestEpisode?: string;
   status?: string;
+  source?: 'samehadaku' | 'otakudesu' | 'kuramanime';
 }
 
 function SearchContent() {
@@ -156,6 +157,7 @@ function SearchContent() {
                   latestEpisode={item.latestEpisode}
                   status={item.status}
                   contentType="anime"
+                  source={item.source}
                 />
               </motion.div>
             ))}

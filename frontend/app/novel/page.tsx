@@ -71,7 +71,7 @@ export default function NovelPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Daftar <span className="gradient-text">Novel</span>
+          Daftar <span className="text-white">Novel</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Koleksi light novel dan web novel terlengkap dengan terjemahan Indonesia

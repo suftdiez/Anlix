@@ -50,7 +50,7 @@ export default function GenreListPage() {
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
-          Genre <span className="gradient-text">Novel</span>
+          Genre <span className="text-white">Novel</span>
         </h1>
         <p className="text-gray-400 mb-4">
           Jelajahi novel berdasarkan genre favorit kamu

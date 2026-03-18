@@ -104,7 +104,7 @@ export default function KomikAuthorPage() {
           </div>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-white">
-              Author: <span className="gradient-text">{authorName}</span>
+              Author: <span className="text-white">{authorName}</span>
             </h1>
             <p className="text-gray-400">
               Koleksi komik dari author {authorName}

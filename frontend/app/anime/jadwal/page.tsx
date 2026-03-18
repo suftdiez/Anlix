@@ -19,14 +19,14 @@ interface Schedule {
 }
 
 const DAYS = [
-  { key: 'Senin', label: 'Senin', color: 'from-blue-500 to-cyan-500' },
-  { key: 'Selasa', label: 'Selasa', color: 'from-purple-500 to-pink-500' },
-  { key: 'Rabu', label: 'Rabu', color: 'from-green-500 to-emerald-500' },
-  { key: 'Kamis', label: 'Kamis', color: 'from-yellow-500 to-orange-500' },
-  { key: 'Jumat', label: 'Jumat', color: 'from-red-500 to-rose-500' },
-  { key: 'Sabtu', label: 'Sabtu', color: 'from-indigo-500 to-purple-500' },
-  { key: 'Minggu', label: 'Minggu', color: 'from-pink-500 to-red-500' },
-  { key: 'Random', label: 'Random', color: 'from-gray-500 to-gray-600' },
+  { key: 'Senin', label: 'Senin', color: 'bg-blue-500' },
+  { key: 'Selasa', label: 'Selasa', color: 'bg-purple-500' },
+  { key: 'Rabu', label: 'Rabu', color: 'bg-green-500' },
+  { key: 'Kamis', label: 'Kamis', color: 'bg-yellow-500' },
+  { key: 'Jumat', label: 'Jumat', color: 'bg-red-500' },
+  { key: 'Sabtu', label: 'Sabtu', color: 'bg-indigo-500' },
+  { key: 'Minggu', label: 'Minggu', color: 'bg-pink-500' },
+  { key: 'Random', label: 'Random', color: 'bg-gray-500' },
 ];
 
 // Map JS getDay() to Indonesian day names
@@ -116,7 +116,7 @@ export default function AnimeSchedulePage() {
               onClick={() => setActiveDay(day.key)}
               className={`relative flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
                 isActive
-                  ? `bg-gradient-to-r ${day.color} text-white shadow-lg`
+                  ? `${day.color} text-white shadow-lg`
                   : 'bg-dark-card border border-white/10 text-gray-400 hover:text-white hover:border-white/30'
               }`}
             >
@@ -166,7 +166,7 @@ export default function AnimeSchedulePage() {
           className="space-y-4"
         >
           {/* Day Header */}
-          <div className={`bg-gradient-to-r ${activeDayData?.color || 'from-primary to-secondary'} p-4 rounded-xl mb-6`}>
+          <div className={`${activeDayData?.color || 'bg-primary'} p-4 rounded-xl mb-6`}>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <FiCalendar className="w-5 h-5" />
               {activeDayData?.label || activeDay}
