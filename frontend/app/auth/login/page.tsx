@@ -45,7 +45,11 @@ export default function LoginPage() {
       toast.success('Login dengan Google berhasil!');
       router.push('/');
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Login Google gagal');
+      console.error('Google login error:', error);
+      const msg = error?.response?.data?.error 
+        || error?.message 
+        || 'Login Google gagal';
+      toast.error(msg);
     } finally {
       setIsLoading(false);
     }
