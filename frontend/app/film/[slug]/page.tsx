@@ -70,19 +70,24 @@ export default function FilmDetailPage() {
         // First try to get film detail
         const response = await filmApi.getDetail(slug);
         if (response.success && response.data) {
-          // Check if it might be a series (no servers = likely series)
-          if (!response.data.servers || response.data.servers.length === 0) {
-            // Try to get series detail
-            try {
-              const seriesResponse = await filmApi.getSeriesDetail(slug);
-              if (seriesResponse.success && seriesResponse.data) {
-                setFilm({ ...seriesResponse.data, isSeries: true });
-                return;
-              }
-            } catch {
-              // Not a series, continue with film
-            }
+          // If film has servers, it's definitely a film - show it directly
+          if (response.data.servers && response.data.servers.length > 0) {
+            setFilm(response.data);
+            return;
           }
+
+          // No servers - could be a series OR a film only on TMDB
+          // Try series detail first, but fall back to showing film info
+          try {
+            const seriesResponse = await filmApi.getSeriesDetail(slug);
+            if (seriesResponse.success && seriesResponse.data) {
+              setFilm({ ...seriesResponse.data, isSeries: true });
+              return;
+            }
+          } catch {
+            // Not a series - show the film data as-is (TMDB info without servers)
+          }
+          // Show film even without servers (TMDB fallback data)
           setFilm(response.data);
         } else {
           // Film not found - try series detail as fallback
@@ -117,6 +122,7 @@ export default function FilmDetailPage() {
 
     fetchFilmDetail();
   }, [slug]);
+
 
   // Check bookmark status
   useEffect(() => {
@@ -252,6 +258,16 @@ export default function FilmDetailPage() {
               </svg>
               Tonton Sekarang
             </Link>
+          )}
+
+          {/* No servers available message */}
+          {!film.isSeries && (!film.servers || film.servers.length === 0) && (
+            <div className="w-full mt-4 flex items-center justify-center gap-2 py-3 px-4 rounded-lg bg-gray-800/50 border border-gray-700 text-gray-400 text-sm">
+              <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Server streaming belum tersedia
+            </div>
           )}
 
           {/* Watch Trailer Button */}

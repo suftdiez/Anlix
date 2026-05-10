@@ -102,7 +102,6 @@ export default function BatchDownload({ animeTitle }: BatchDownloadProps) {
         <span className="w-1 h-8 bg-gradient-to-b from-green-500 to-emerald-600 rounded-full" />
         <FiDownload className="w-5 h-5 text-green-400" />
         Batch Download
-        <span className="text-xs font-normal text-gray-500 ml-2">via Kusonime</span>
       </h2>
 
       {isLoading ? (
@@ -191,10 +190,6 @@ export default function BatchDownload({ animeTitle }: BatchDownloadProps) {
             </button>
           )}
 
-          {/* Attribution */}
-          <p className="text-[11px] text-gray-600 text-center mt-2">
-            Sumber: kusonime.com · Link download mengarah ke situs eksternal
-          </p>
         </div>
       )}
     </motion.div>

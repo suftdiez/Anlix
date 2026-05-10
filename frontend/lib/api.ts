@@ -101,10 +101,14 @@ export const animeApi = {
     const kuramanimeData = kuramanimeRes.data?.data || [];
     const subnimeData = subnimeRes.data?.data || [];
     
-    // Combine and deduplicate by title (case-insensitive)
+    // Combine and deduplicate by title AND source (case-insensitive)
+    // This allows the same anime from different sources (subnime, kuramanime, etc.) to all show up
     const seen = new Set<string>();
-    const combined = [...samehadakuData, ...otakudesuData, ...kuramanimeData, ...subnimeData].filter(item => {
-      const key = item.title?.toLowerCase().replace(/\s+/g, '');
+    const combined = [...subnimeData, ...samehadakuData, ...otakudesuData, ...kuramanimeData].filter(item => {
+      const titleKey = item.title?.toLowerCase().replace(/\s+/g, '');
+      const sourceKey = item.source || 'unknown';
+      const key = `${sourceKey}-${titleKey}`;
+      
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

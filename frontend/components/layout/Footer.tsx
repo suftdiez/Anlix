@@ -43,19 +43,8 @@ export default function Footer() {
               />
             </Link>
             <p className="mt-4 text-gray-400 max-w-md">
-              Tempat terbaik untuk menonton anime dan donghua subtitle Indonesia. 
-              Nikmati koleksi lengkap dengan kualitas terbaik.
+              Streaming anime, donghua, film, drama, komik, dan novel favoritmu dalam kualitas terbaik.
             </p>
-            <div className="flex items-center gap-4 mt-6">
-              <a
-                href="https://github.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-lg bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              >
-                <FiGithub className="w-5 h-5" />
-              </a>
-            </div>
           </div>
 
           {/* Navigation Links */}
@@ -111,25 +100,13 @@ export default function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-gray-500 text-sm">
+        <div className="mt-12 pt-8 border-t border-white/5 flex justify-center items-center">
+          <p className="text-gray-500 text-sm text-center">
             © {currentYear} ANLIX. All rights reserved.
-          </p>
-          <p className="text-gray-500 text-sm flex items-center gap-1">
-            Made with <FiHeart className="w-4 h-4 text-primary" /> for anime lovers
           </p>
         </div>
       </div>
 
-      {/* Disclaimer */}
-      <div className="bg-dark-800 py-4">
-        <div className="container mx-auto px-4">
-          <p className="text-gray-600 text-xs text-center">
-            Disclaimer: ANLIX tidak menyimpan file apapun di server kami. 
-            Semua konten disediakan oleh pihak ketiga yang tidak terafiliasi.
-          </p>
-        </div>
-      </div>
     </footer>
   );
 }

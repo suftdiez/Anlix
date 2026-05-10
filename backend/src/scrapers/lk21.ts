@@ -4,7 +4,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://tv9.lk21official.cc';
+const BASE_URL = 'https://tv10.lk21official.cc';
 const SERIES_URL = 'https://tv3.nontondrama.my';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
@@ -30,6 +30,20 @@ const axiosInstance = axios.create({
 // Delay helper
 async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Clean raw LK21 title: "Nonton Mortal Kombat II (2026) Sub Indo di Lk21" -> "Mortal Kombat II (2026)"
+function cleanTitle(rawTitle: string): string {
+  let title = rawTitle;
+  // Remove "| Streaming dan Download..." suffix first
+  title = title.replace(/\s*\|.*$/i, '');
+  // Remove common LK21 prefixes
+  title = title.replace(/^(?:Lk21\s+)?Nonton\s+/i, '');
+  // Remove common LK21 suffixes
+  title = title.replace(/\s*(?:Sub(?:title)?\s+Indo(?:nesia)?)?(?:\s+(?:di\s+)?(?:Lk21|Layarkaca21|nontondrama).*)?\s*$/i, '');
+  // Strip any remaining trailing "Sub Indo" or "Subtitle Indonesia"
+  title = title.replace(/\s+Sub(?:title)?\s+Indo(?:nesia)?\s*$/i, '');
+  return title.trim() || rawTitle;
 }
 
 // Throttled request to avoid rate limiting
@@ -562,10 +576,11 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
     const html = await throttledRequest(url);
     const $ = cheerio.load(html);
 
-    // Title
-    const title = $('h1').first().text().trim() ||
+    // Title - clean up raw LK21 title format
+    const rawTitle = $('h1').first().text().trim() ||
                   $('title').text().split('|')[0].trim() ||
                   slug.replace(/-/g, ' ');
+    const title = cleanTitle(rawTitle);
 
      // Detect redirect/blocking page from LK21
     // Only match the specific redirect phrase, NOT the brand name "nontondrama" (which appears on all pages)
@@ -665,31 +680,70 @@ export async function getFilmDetail(slug: string): Promise<FilmDetail | null> {
                  $('meta[property="og:description"]').attr('content') || '';
     }
 
-    // Extract info from links
-    const genres: string[] = [];
-    const actors: string[] = [];
+    // Extract film-specific info from the info section (NOT the nav menu)
+    // Strategy: find the parent container of director/artist/translator links,
+    // which contains only the film-specific genre/country links (not the 50+ nav menu ones)
+    let genres: string[] = [];
+    let actors: string[] = [];
     let director = '';
     let country = '';
     let translator = '';
 
-    $('a[href*="/genre/"]').each((_, el) => {
-      genres.push($(el).text().trim());
-    });
+    // Find the info container by walking up from director/translator links
+    let infoContainer: cheerio.Cheerio<any> | null = null;
+    const directorLink = $('a[href*="/director/"]').first();
+    const translatorLink = $('a[href*="/translator/"]').first();
+    const anchorLink = directorLink.length > 0 ? directorLink : translatorLink;
+    
+    if (anchorLink.length > 0) {
+      let parent = anchorLink.parent();
+      for (let i = 0; i < 5; i++) {
+        const genreCount = parent.find('a[href*="/genre/"]').length;
+        if (genreCount > 0 && genreCount <= 10) {
+          infoContainer = parent;
+          break;
+        }
+        parent = parent.parent();
+      }
+    }
 
-    $('a[href*="/artist/"]').each((_, el) => {
-      actors.push($(el).text().trim());
-    });
+    if (infoContainer) {
+      // Extract from the film-specific info container
+      infoContainer.find('a[href*="/genre/"]').each((_: number, el: any) => {
+        const text = $(el).text().trim();
+        if (text && text.length > 1) genres.push(text);
+      });
+      infoContainer.find('a[href*="/artist/"]').each((_: number, el: any) => {
+        actors.push($(el).text().trim());
+      });
+    } else {
+      // Fallback: deduplicate all genre/actor links (case-insensitive)
+      const genreMap = new Map<string, string>();
+      $('a[href*="/genre/"]').each((_, el) => {
+        const text = $(el).text().trim();
+        if (text && text.length > 1) {
+          const key = text.toLowerCase();
+          if (!genreMap.has(key)) genreMap.set(key, text);
+        }
+      });
+      genres = Array.from(genreMap.values());
+      
+      $('a[href*="/artist/"]').each((_, el) => {
+        const text = $(el).text().trim();
+        if (text && text.length > 1) actors.push(text);
+      });
+    }
 
     $('a[href*="/director/"]').each((_, el) => {
-      director = $(el).text().trim();
+      if (!director) director = $(el).text().trim();
     });
 
     $('a[href*="/country/"]').each((_, el) => {
-      country = $(el).text().trim();
+      if (!country) country = $(el).text().trim();
     });
 
     $('a[href*="/translator/"]').each((_, el) => {
-      translator = $(el).text().trim();
+      if (!translator) translator = $(el).text().trim();
     });
 
     // Rating
@@ -1791,6 +1845,9 @@ export default {
   getFilmsByCountry,
   getFilmsByYear,
   getTopRatedFilms,
+  getFeaturedSeries,
+  getSeriesUpdate,
+  getPopularFilms,
   getSeriesDetail,
   getEpisodeStreaming,
 };

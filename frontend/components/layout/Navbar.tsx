@@ -93,9 +93,9 @@ export default function Navbar() {
                 <div className="relative">
                   <button
                     onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors"
+                    className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-colors group"
                   >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-semibold text-sm">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-gray-600 flex items-center justify-center text-gray-200 font-semibold text-sm group-hover:border-primary/50 transition-colors shadow-inner">
                       {user?.username?.charAt(0).toUpperCase()}
                     </div>
                     <span className="hidden sm:block text-sm font-medium">

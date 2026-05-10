@@ -74,7 +74,7 @@ export default function ProfilePage() {
                     className="object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-blue-500 text-3xl md:text-5xl font-bold font-outfit uppercase">
+                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-700 to-gray-900 border-4 border-gray-800 text-gray-200 text-3xl md:text-5xl font-bold font-outfit uppercase shadow-inner">
                     {user.username.charAt(0)}
                   </div>
                 )}

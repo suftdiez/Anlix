@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { filmApi } from '@/lib/api';
+import { filmApi, userApi } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 
 interface StreamServer {
   name: string;
@@ -18,10 +19,13 @@ export default function EpisodeWatchPage() {
   // Decode the episode slug from URL (it may be URL-encoded)
   const rawEpisodeSlug = params.episode as string;
   const episodeSlug = decodeURIComponent(rawEpisodeSlug || '');
+  const { isAuthenticated } = useAuth();
 
   const [servers, setServers] = useState<StreamServer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [seriesTitle, setSeriesTitle] = useState('');
+  const [seriesPoster, setSeriesPoster] = useState('');
 
   // Parse episode info from slug
   const episodeMatch = episodeSlug?.match(/season-(\d+)-episode-(\d+)/);
@@ -36,11 +40,22 @@ export default function EpisodeWatchPage() {
       setError(null);
 
       try {
-        const response = await filmApi.getEpisodeStream(episodeSlug);
-        if (response.success && response.data) {
-          setServers(response.data);
+        // Fetch servers and series detail in parallel
+        const [streamResponse, seriesResponse] = await Promise.all([
+          filmApi.getEpisodeStream(episodeSlug),
+          filmApi.getSeriesDetail(seriesSlug).catch(() => null),
+        ]);
+
+        if (streamResponse.success && streamResponse.data) {
+          setServers(streamResponse.data);
         } else {
           setError('Server streaming tidak ditemukan');
+        }
+
+        // Save series info for history
+        if (seriesResponse?.success && seriesResponse.data) {
+          setSeriesTitle(seriesResponse.data.title || seriesSlug);
+          setSeriesPoster(seriesResponse.data.poster || '');
         }
       } catch (err) {
         console.error('Failed to fetch episode servers:', err);
@@ -51,11 +66,29 @@ export default function EpisodeWatchPage() {
     };
 
     fetchEpisodeServers();
-  }, [episodeSlug]);
+  }, [episodeSlug, seriesSlug]);
 
-  // Open video in new tab
-  const handleWatchServer = (server: StreamServer) => {
+  // Open video in new tab and save to watch history
+  const handleWatchServer = async (server: StreamServer) => {
     if (server.url) {
+      // Save to watch history
+      if (isAuthenticated) {
+        try {
+          await userApi.addHistory({
+            contentId: seriesSlug,
+            contentType: 'film',
+            episodeId: episodeSlug,
+            episodeNumber: episodeNum || 1,
+            title: seriesTitle || seriesSlug.replace(/-/g, ' '),
+            episodeTitle: `Season ${seasonNum || 1} Episode ${episodeNum || 1}`,
+            poster: seriesPoster,
+            slug: seriesSlug,
+            progress: 50,
+          });
+        } catch (e) {
+          // Ignore errors
+        }
+      }
       window.open(server.url, '_blank', 'noopener,noreferrer');
     }
   };

@@ -53,7 +53,7 @@ interface UnifiedHistoryItem {
   source: 'reading' | 'watch';
 }
 
-type FilterType = 'all' | 'novel' | 'komik' | 'anime' | 'donghua';
+type FilterType = 'all' | 'novel' | 'komik' | 'anime' | 'donghua' | 'film';
 
 function normalizeReadingItem(item: ReadingHistoryItem): UnifiedHistoryItem {
   const slug = item.contentSlug || item.novelSlug || '';
@@ -107,12 +107,22 @@ function normalizeWatchItem(item: WatchHistoryItem): UnifiedHistoryItem {
     continueLink = `/donghua/${item.slug}/${item.episodeId}`;
   } else {
     detailLink = `/film/${item.slug}`;
-    continueLink = `/film/${item.slug}`;
+    // Check if this is a series episode (episodeId contains season info)
+    const isSeriesEpisode = item.episodeId && item.episodeId.includes('season-');
+    continueLink = isSeriesEpisode 
+      ? `/film/${item.slug}/episode/${item.episodeId}`
+      : `/film/${item.slug}/watch`;
   }
   
-  const subtitle = type === 'film' 
-    ? (item.episodeTitle || 'Film') 
-    : `Episode ${item.episodeNumber}${item.episodeTitle ? ` - ${item.episodeTitle}` : ''}`;
+  const isSeriesEpisode = item.episodeId && item.episodeId.includes('season-');
+  let subtitle = '';
+  if (type === 'film' && isSeriesEpisode) {
+    subtitle = item.episodeTitle || `Episode ${item.episodeNumber}`;
+  } else if (type === 'film') {
+    subtitle = item.episodeTitle || item.title || 'Film';
+  } else {
+    subtitle = `Episode ${item.episodeNumber}${item.episodeTitle ? ` - ${item.episodeTitle}` : ''}`;
+  }
 
   return {
     _id: item._id,
@@ -133,6 +143,7 @@ const FILTER_LABELS: Record<FilterType, string> = {
   all: 'Semua',
   anime: 'Anime',
   donghua: 'Donghua',
+  film: 'Film',
   novel: 'Novel',
   komik: 'Komik',
 };
@@ -162,12 +173,12 @@ export default function ReadingHistoryPage() {
 
       setIsLoading(true);
       try {
-        const isWatchFilter = filter === 'anime' || filter === 'donghua';
+        const isWatchFilter = filter === 'anime' || filter === 'donghua' || filter === 'film';
         const isReadFilter = filter === 'novel' || filter === 'komik';
 
         if (isWatchFilter) {
-          // Only fetch watch history for anime/donghua
-          const response = await userApi.getHistory(page, 20, filter as 'anime' | 'donghua');
+          // Only fetch watch history for anime/donghua/film
+          const response = await userApi.getHistory(page, 20, filter as 'anime' | 'donghua' | 'film');
           if (response.success) {
             const unified = (response.data || []).map(normalizeWatchItem);
             setItems(unified);
@@ -232,7 +243,7 @@ export default function ReadingHistoryPage() {
   const handleClearAll = async () => {
     if (!confirm('Hapus semua riwayat?')) return;
     try {
-      const isWatchFilter = filter === 'anime' || filter === 'donghua';
+      const isWatchFilter = filter === 'anime' || filter === 'donghua' || filter === 'film';
       const isReadFilter = filter === 'novel' || filter === 'komik';
       
       if (isWatchFilter || filter === 'all') {
@@ -428,9 +439,12 @@ export default function ReadingHistoryPage() {
               ? 'Belum ada riwayat. Mulai nonton anime atau baca novel/komik!' 
               : `Belum ada riwayat ${FILTER_LABELS[filter]}.`}
           </p>
-          <div className="flex justify-center gap-4 mt-4">
+          <div className="flex justify-center gap-4 mt-4 flex-wrap">
             <Link href="/anime" className="text-red-400 hover:underline">
               Jelajahi Anime
+            </Link>
+            <Link href="/film" className="text-purple-400 hover:underline">
+              Jelajahi Film
             </Link>
             <Link href="/novel" className="text-primary hover:underline">
               Jelajahi Novel
