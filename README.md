@@ -161,4 +161,3 @@ MIT License - Feel free to use this project for learning purposes.
 
 ---
 
-Made with ❤️ for anime lovers
