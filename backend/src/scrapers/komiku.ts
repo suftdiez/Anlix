@@ -138,7 +138,7 @@ export async function getLatest(): Promise<Comic[]> {
       
       // Get poster image
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
       
       // Get chapter and time info from spans
       const spans = $el.find('span');
@@ -210,7 +210,7 @@ export async function getList(page: number = 1): Promise<{ comics: Comic[]; hasN
       
       const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
       
       if (title || poster) {
         comics.push({
@@ -271,7 +271,7 @@ export async function getByType(
       
       const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
       
       if (title || poster) {
         comics.push({
@@ -596,7 +596,7 @@ export async function search(query: string): Promise<Comic[]> {
       
       const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
       
       if (title || poster) {
         comics.push({
@@ -669,7 +669,7 @@ export async function getByGenre(genre: string, page: number = 1): Promise<{ com
 
       const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
 
       if (title || poster) {
         comics.push({
@@ -733,7 +733,7 @@ export async function getByAuthor(author: string, page: number = 1): Promise<{ c
 
       const title = $el.find('h3').first().text().trim() || $el.attr('title') || '';
       const img = $el.find('img').first();
-      const poster = img.attr('src') || img.attr('data-src') || '';
+      const poster = img.attr('data-src') || img.attr('src') || '';
 
       if (title || poster) {
         comics.push({
