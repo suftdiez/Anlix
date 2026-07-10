@@ -498,8 +498,8 @@ export async function getChapterImages(chapterSlug: string): Promise<ChapterImag
     
     // Get chapter images
     const images: string[] = [];
-    $('img').each((_, el) => {
-      const src = $(el).attr('src') || $(el).attr('data-src') || '';
+    $('#Baca_Komik img').each((_, el) => {
+      const src = $(el).attr('data-src') || $(el).attr('src') || '';
       // Filter for chapter images (usually contain certain patterns)
       if (src && (src.includes('img') || src.includes('chapter') || src.includes('komiku')) 
           && !src.includes('logo') && !src.includes('icon') && !src.includes('avatar')) {
