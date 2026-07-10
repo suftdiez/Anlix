@@ -4,9 +4,20 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { komikApi, userApi } from '@/lib/api';
+import { komikApi, userApi, API_URL } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { FiColumns, FiList, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
+
+// Function to handle proxied image URLs
+const getImageUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('/asset')) {
+    // If it's a relative URL from komiku, we shouldn't even render it (it's probably an icon)
+    // But if we must, just return it as is or prepend komiku url
+    return `https://komiku.org${url}`;
+  }
+  return `${API_URL}/api/komik/image?url=${encodeURIComponent(url)}`;
+};
 
 interface ChapterData {
   title: string;
@@ -214,7 +225,7 @@ export default function ReadChapterPage() {
               {chapter.images.map((img, idx) => (
                 <div key={idx} className="relative w-full">
                   <Image
-                    src={img}
+                    src={getImageUrl(img)}
                     alt={`Page ${idx + 1}`}
                     width={800}
                     height={1200}
@@ -241,7 +252,7 @@ export default function ReadChapterPage() {
               {/* Current Page */}
               <div className="relative max-h-full max-w-full">
                 <Image
-                  src={chapter.images[currentPage]}
+                  src={getImageUrl(chapter.images[currentPage])}
                   alt={`Page ${currentPage + 1}`}
                   width={800}
                   height={1200}

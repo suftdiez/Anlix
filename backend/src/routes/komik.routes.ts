@@ -117,6 +117,38 @@ router.get('/detail/:slug', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/komik/image - Proxy images from Komiku CDN to bypass hotlinking protection
+router.get('/image', async (req: Request, res: Response) => {
+  const imageUrl = req.query.url as string;
+  
+  if (!imageUrl) {
+    return res.status(400).json({ success: false, error: 'URL parameter is required' });
+  }
+
+  try {
+    const { default: axios } = await import('axios');
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      headers: {
+        'Referer': 'https://komiku.org/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+      },
+    });
+
+    const contentType = response.headers['content-type'];
+    if (contentType) {
+      res.set('Content-Type', contentType);
+    }
+    
+    res.set('Cache-Control', 'public, max-age=604800'); // 7 days
+    res.send(Buffer.from(response.data));
+  } catch (error) {
+    console.error('Error proxying komik image:', error);
+    res.status(500).json({ success: false, error: 'Failed to proxy image' });
+  }
+});
+
 // GET /api/komik/chapter/:slug - Get chapter images for reading
 router.get('/chapter/:slug', async (req: Request, res: Response) => {
   try {
