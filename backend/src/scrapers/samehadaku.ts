@@ -539,8 +539,21 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
     // Also check for select dropdown options
     $('select.mirror option, select option').each((_, el) => {
       const $el = $(el);
-      const dataUrl = $el.attr('data-url') || $el.attr('value') || '';
+      let dataUrl = $el.attr('data-url') || $el.attr('value') || '';
       const serverName = $el.text().trim();
+      
+      // Handle base64 encoded iframes
+      if (dataUrl.startsWith('PGlmcmFtZ')) {
+        try {
+          const decoded = Buffer.from(dataUrl, 'base64').toString('utf8');
+          const match = decoded.match(/src="([^"]+)"/);
+          if (match) {
+            dataUrl = match[1];
+          }
+        } catch (e) {
+          // Ignore decode error
+        }
+      }
       
       if (dataUrl && dataUrl.startsWith('http') && !servers.some(s => s.url === dataUrl)) {
         servers.push({
