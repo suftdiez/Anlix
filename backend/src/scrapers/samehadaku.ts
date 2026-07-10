@@ -199,14 +199,16 @@ export async function getLatestAnime(page: number = 1): Promise<{ data: AnimeIte
                   $el.find('.tt h2').text().trim() ||
                   $el.find('.tt').text().trim() ||
                   $el.find('.title').text().trim() ||
+                  $el.find('h4').text().trim() ||
                   $el.find('h2').text().trim() ||
-                  linkEl.attr('title') || '';
+                  linkEl.attr('title') || 
+                  $el.find('img').attr('title') || '';
       
       // Get poster - v1.samehadaku.how uses .thumbass img
-      const rawPoster = $el.find('.thumbass img, .imgseries img').attr('src') || 
-                     $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') ||
-                     $el.find('img').attr('data-lazy-src') || '';
+      const rawPoster = $el.find('img').attr('data-src') ||
+                     $el.find('img').attr('data-lazy-src') ||
+                     $el.find('.thumbass img, .imgseries img').attr('src') || 
+                     $el.find('img').attr('src') || '';
       const poster = upscaleWpImage(rawPoster);
       
       const episode = $el.find('.epx').text().trim() ||
@@ -287,8 +289,9 @@ export async function getOngoingAnime(page: number = 1): Promise<{ data: AnimeIt
                   $el.find('.title').text().trim() ||
                   linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = $el.find('img').attr('data-src') || 
+                     $el.find('img').attr('data-lazy-src') || 
+                     $el.find('img').attr('src') || '';
       
       const rating = $el.find('.rating i').text().trim() ||
                      $el.find('.score').text().trim();
@@ -353,8 +356,9 @@ export async function searchAnime(query: string, page: number = 1): Promise<{ da
                   $el.find('.title').text().trim() ||
                   linkEl.attr('title') || '';
       
-      const poster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const poster = $el.find('img').attr('data-src') || 
+                     $el.find('img').attr('data-lazy-src') || 
+                     $el.find('img').attr('src') || '';
       const type = $el.find('.typez').text().trim();
 
       if (href && title) {
@@ -405,7 +409,7 @@ export async function getAnimeDetail(slug: string): Promise<AnimeDetail | null> 
     const $ = cheerio.load(html);
 
     const title = $('.entry-title, h1.entry-title, .infox h1').first().text().trim();
-    const poster = $('.thumb img, .bigcover img, .info img').attr('src') || '';
+    const poster = $('.thumb img, .bigcover img, .info img').attr('data-src') || $('.thumb img, .bigcover img, .info img').attr('data-lazy-src') || $('.thumb img, .bigcover img, .info img').attr('src') || '';
     const synopsis = $('.entry-content p, .synops p, .desc, .sinopsis p').first().text().trim() ||
                      $('.entry-content').text().trim();
 
@@ -651,8 +655,9 @@ export async function getAnimeByGenre(genre: string, page: number = 1): Promise<
                   $el.find('.title').text().trim() ||
                   linkEl.attr('title') || '';
       
-      const rawPoster = $el.find('img').attr('src') || 
-                     $el.find('img').attr('data-src') || '';
+      const rawPoster = $el.find('img').attr('data-src') || 
+                     $el.find('img').attr('data-lazy-src') || 
+                     $el.find('img').attr('src') || '';
       const poster = upscaleWpImage(rawPoster);
 
       if (href && title) {
