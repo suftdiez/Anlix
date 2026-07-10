@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://anichin.watch';
+const BASE_URL = 'https://anichin.tv';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
 // In-memory cache as fallback when Redis is not available
