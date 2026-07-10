@@ -504,7 +504,7 @@ export async function getEpisodeDetail(slug: string): Promise<EpisodeDetail | nu
     // Find video iframes (default player)
     $('iframe').each((_, el) => {
       const src = $(el).attr('src') || $(el).attr('data-src') || '';
-      if (src && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
+      if (src && src !== 'about:blank' && !src.includes('facebook') && !src.includes('twitter') && !src.includes('ads')) {
         servers.push({
           name: 'Default Player',
           url: src,
