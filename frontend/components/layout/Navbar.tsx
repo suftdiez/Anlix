@@ -193,7 +193,7 @@ export default function Navbar() {
               style={{ backgroundColor: '#0a0a0a' }}
             >
               <div className="p-4 flex justify-between items-center border-b border-white/10">
-                <span className="text-xl font-display font-bold gradient-text">
+                <span className="text-xl font-display font-bold text-white">
                   Menu
                 </span>
                 <button
