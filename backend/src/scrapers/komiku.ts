@@ -7,7 +7,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import redis from '../config/redis';
 
-const BASE_URL = 'https://komiku.cc';
+const BASE_URL = 'https://komiku.org';
 const CACHE_TTL = parseInt(process.env.SCRAPE_CACHE_TTL || '3600');
 
 // In-memory cache as fallback when Redis is not available
@@ -119,7 +119,7 @@ export async function getLatest(): Promise<Comic[]> {
     const seen = new Set<string>();
     
     // Find comic links on homepage
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
       
@@ -127,7 +127,7 @@ export async function getLatest(): Promise<Comic[]> {
       if (href.includes('-chapter-')) return;
       
       // Extract slug
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
       
       if (!slug || seen.has(slug)) return;
@@ -162,7 +162,7 @@ export async function getLatest(): Promise<Comic[]> {
           poster,
           latestChapter,
           updatedAt,
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
@@ -196,13 +196,13 @@ export async function getList(page: number = 1): Promise<{ comics: Comic[]; hasN
     const comics: Comic[] = [];
     const seen = new Set<string>();
     
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
       
       if (href.includes('-chapter-')) return;
       
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
       
       if (!slug || seen.has(slug)) return;
@@ -218,7 +218,7 @@ export async function getList(page: number = 1): Promise<{ comics: Comic[]; hasN
           title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
           slug,
           poster,
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
@@ -257,13 +257,13 @@ export async function getByType(
     const comics: Comic[] = [];
     const seen = new Set<string>();
     
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
       
       if (href.includes('-chapter-')) return;
       
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
       
       if (!slug || seen.has(slug)) return;
@@ -280,7 +280,7 @@ export async function getByType(
           slug,
           poster,
           type: type.charAt(0).toUpperCase() + type.slice(1),
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
@@ -310,7 +310,7 @@ export async function getDetail(slug: string): Promise<ComicDetail | null> {
   if (cached) return cached;
 
   try {
-    const url = `${BASE_URL}/komik/${slug}`;
+    const url = `${BASE_URL}/manga/${slug}`;
     const { data: html } = await axiosInstance.get(url);
     const $ = cheerio.load(html);
 
@@ -458,7 +458,7 @@ export async function getDetail(slug: string): Promise<ComicDetail | null> {
       synopsis: synopsis || 'Tidak ada sinopsis.',
       genres,
       chapters,
-      url: `${BASE_URL}/komik/${slug}`,
+      url: `${BASE_URL}/manga/${slug}`,
     };
 
     if (title) {
@@ -582,13 +582,13 @@ export async function search(query: string): Promise<Comic[]> {
     const comics: Comic[] = [];
     const seen = new Set<string>();
     
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
       
       if (href.includes('-chapter-')) return;
       
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
       
       if (!slug || seen.has(slug)) return;
@@ -604,7 +604,7 @@ export async function search(query: string): Promise<Comic[]> {
           title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
           slug,
           poster,
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
@@ -655,13 +655,13 @@ export async function getByGenre(genre: string, page: number = 1): Promise<{ com
     const comics: Comic[] = [];
     const seen = new Set<string>();
 
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
 
       if (href.includes('-chapter-')) return;
 
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
 
       if (!slug || seen.has(slug)) return;
@@ -677,7 +677,7 @@ export async function getByGenre(genre: string, page: number = 1): Promise<{ com
           title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
           slug,
           poster,
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
@@ -719,13 +719,13 @@ export async function getByAuthor(author: string, page: number = 1): Promise<{ c
     const comics: Comic[] = [];
     const seen = new Set<string>();
 
-    $('a[href*="/komik/"]').each((_, el) => {
+    $('a[href*="/manga/"]').each((_, el) => {
       const $el = $(el);
       const href = $el.attr('href') || '';
 
       if (href.includes('-chapter-')) return;
 
-      const match = href.match(/\/komik\/([^\/]+)/);
+      const match = href.match(/\/manga\/([^\/]+)/);
       const slug = match ? match[1] : '';
 
       if (!slug || seen.has(slug)) return;
@@ -741,7 +741,7 @@ export async function getByAuthor(author: string, page: number = 1): Promise<{ c
           title: title || slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
           slug,
           poster,
-          url: `${BASE_URL}/komik/${slug}`,
+          url: `${BASE_URL}/manga/${slug}`,
         });
       }
     });
